@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RGB Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo"></span>RGB Studio</div>
+    <div class="top-right">
+      <span id="status" class="status">Connecting…</span>
+      <button id="rescan" class="ghost" title="Look for new devices">Rescan</button>
+      <button id="save" class="primary" title="Keep this look without RGB Studio running">Save to PC</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stage">
+      <div class="stage-grid">
+        <div class="rig-wrap">
+          <div id="rig" class="rig"></div>
+          <div class="rig-tools">
+            <button class="ghost small" data-rotate="-1" title="Turn left">⟲</button>
+            <button class="ghost small" data-rotate="1" title="Turn right">⟳</button>
+            <button class="ghost small" id="fit" title="Show everything">Fit</button>
+          </div>
+          <div class="rig-hint">Drag a light to move it · drag or middle-drag to orbit · right-drag or Shift-drag to pan · scroll to zoom</div>
+        </div>
+        <aside id="side" class="side"></aside>
+      </div>
+      <div class="flows">
+        <div class="flow-row"><span>Case flow</span><div id="flow-case" class="seg"></div></div>
+        <div class="flow-row"><span>Desk flow</span><div id="flow-desk" class="seg"></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>1 · Pick a look</h2>
+      <p class="hint">Applies to every device at once, perfectly in sync.</p>
+      <div id="scenes" class="scenes"></div>
+    </section>
+
+    <section class="tune">
+      <h2>2 · Fine-tune it</h2>
+      <div class="tune-grid">
+        <div class="field wide">
+          <label>Motion</label>
+          <div id="motion" class="seg"></div>
+        </div>
+        <div class="field wide">
+          <label>Colors <span class="sub" id="palette-hint"></span></label>
+          <div id="palette" class="palette"></div>
+        </div>
+        <div class="field" id="speed-field">
+          <label for="speed">Speed <span class="sub" id="speed-val"></span></label>
+          <input type="range" id="speed" min="0" max="100">
+        </div>
+        <div class="field">
+          <label for="brightness">Brightness <span class="sub" id="brightness-val"></span></label>
+          <input type="range" id="brightness" min="0" max="100">
+        </div>
+        <div class="field" id="spread-field">
+          <label for="spread"><span id="spread-label">Gradient width</span> <span class="sub" id="spread-hint"></span></label>
+          <input type="range" id="spread" min="0" max="100">
+        </div>
+        <div class="field" id="background-field">
+          <label for="background">Background glow <span class="sub" id="background-val"></span></label>
+          <input type="range" id="background" min="0" max="100">
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3 · Your devices</h2>
+      <p class="hint">Live preview of every zone. Want one device to do its own thing? Give it a built-in effect instead.</p>
+      <div id="devices" class="devices"></div>
+    </section>
+  </main>
+
+  <dialog id="hw">
+    <form method="dialog" class="dlg">
+      <h3 id="hw-title"></h3>
+      <p class="hint">Built-in effects run on the device's own chip. They won't sync with your other devices.</p>
+      <div id="hw-modes" class="chips"></div>
+      <div id="hw-opts" class="stack"></div>
+      <div class="dlg-actions">
+        <button value="cancel" class="ghost">Cancel</button>
+        <button id="hw-apply" value="apply" class="primary">Apply</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="save-dlg">
+    <form method="dialog" class="dlg">
+      <h3>Save to PC</h3>
+      <p class="hint">Stores this look on your devices and in OpenRGB, so it stays when RGB Studio is closed.</p>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="style" value="moving" checked>
+          <span><b>Keep it moving</b><small>Each device runs its own built-in effect in your colors. They won't be in sync with each other.</small></span></label>
+        <label class="choice"><input type="radio" name="style" value="still">
+          <span><b>Still</b><small>Freezes the gradient exactly as it looks right now, across everything.</small></span></label>
+      </div>
+      <div id="save-out" class="stack"></div>
+      <div class="dlg-actions">
+        <button value="close" class="ghost">Close</button>
+        <button id="save-go" type="button" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="share-dlg">
+    <form method="dialog" class="dlg">
+      <h3>Share or import a layout</h3>
+      <p class="hint">Your layout as a file. Copy it to share or back it up, or paste one here and import it. Want help? <b>Copy for Claude</b> copies a ready-made prompt with your layout, so you can describe your setup in plain words and paste the answer back here.</p>
+      <textarea id="share-json" spellcheck="false" rows="14"></textarea>
+      <div class="dlg-actions">
+        <button value="close" class="ghost">Close</button>
+        <button id="share-copy" type="button" class="ghost">Copy</button>
+        <button id="share-claude" type="button" class="ghost">Copy for Claude</button>
+        <button id="share-import" type="button" class="primary">Import</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

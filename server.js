@@ -1,0 +1,457 @@
+// RGB Studio: a local web UI for OpenRGB.
+// `node server.js [--open] [--keep-alive]`, then open http://127.0.0.1:6750
+//   --open        open the page in your browser
+//   --keep-alive  keep running after the page is closed (normally it exits about 15 s later)
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
+import { SCENES, MOTIONS, BACKDROP_MOTIONS, renderFrame } from './src/effects.js';
+import { isHex } from './src/color.js';
+import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
+import { FLOWS, ledPositions, areaSize, flowPosition, spiralTurn } from './shared/rig-geometry.js';
+import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
+import { saveToPc, PROFILE } from './src/persist.js';
+import { startupStatus, enableStartupProfile } from './src/startup.js';
+
+const PORT = 6750;
+const HOST = '127.0.0.1';
+const FPS = 20;
+const MAX_BACKLOG = 64 * 1024;   // bytes; above this OpenRGB is falling behind, so frames are skipped
+const SOLID_RESEND = 5;          // seconds between resends of a static look, in case a device reset
+const RECONNECT_DELAY = 3000;
+const DESK_EFFECT_HEIGHT = 50;  // cm of height above the desk that 3D effects span
+const IDLE_EXIT = 15_000;        // after the last page closes
+const FIRST_VISIT_EXIT = 60_000; // if no page ever connects
+const ROOT = import.meta.dirname;
+const PUBLIC = path.join(ROOT, 'public');
+const SHARED = path.join(ROOT, 'shared');
+const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
+const args = new Set(process.argv.slice(2));
+
+const settings = loadSettings();
+const save = () => saveSettings(settings);
+
+let client = null;
+let status = 'connecting';
+let devices = [];
+let keys = [];
+let lights = [];
+let leds = [];        // per device, per LED: { p, n, area } for the effects (see renderFrame)
+let frames = {};      // per device index: the colors last rendered
+let identify = null;
+let paused = false;   // true while "Save to PC" is setting hardware modes
+let startup = { available: false, enabled: false };
+const sseClients = new Set();
+const stats = { sent: 0, skipped: 0 };
+
+const isBuiltIn = d => Boolean(settings.builtIn[keys[d.index]]);
+const directModeOf = d =>
+  d.modes.find(m => /^direct$/i.test(m.name)) ||
+  d.modes.find(m => (m.flags & MODE_FLAG.HAS_PER_LED_COLOR) && m.colorMode === COLOR_MODE.PER_LED);
+
+function broadcast(event, data) {
+  if (!sseClients.size) return;
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) res.write(msg);
+}
+
+function publicState() {
+  return {
+    status,
+    stats: { ...stats, backlog: client?.backlog ?? 0 },
+    scenes: SCENES,
+    motions: MOTIONS,
+    backdropMotions: BACKDROP_MOTIONS,
+    flows: Object.fromEntries(Object.entries(FLOWS).map(([area, f]) => [area, Object.keys(f)])),
+    placements: PLACEMENTS,
+    settings,
+    rig: { ...settings.rig, props: settings.rig.props ?? defaultProps(settings.rig, devices) },
+    lights,
+    startup,
+    devices: devices.map(d => ({
+      index: d.index, key: keys[d.index], type: d.type, name: d.name, vendor: d.vendor, ledCount: d.leds.length,
+      zones: d.zones.map(z => ({ index: z.index, name: z.name, type: z.type, count: z.ledsCount, ledStart: z.ledStart, matrix: z.matrix ?? null })),
+      activeMode: d.activeMode,
+      modes: d.modes.map(({ value, ...m }) => m),
+      builtIn: isBuiltIn(d),
+    })),
+  };
+}
+const pushState = () => broadcast('state', publicState());
+
+// Put every scene device into its per-LED "Direct" mode so we can stream colors to it.
+function takeControl() {
+  for (const d of devices) {
+    if (isBuiltIn(d)) continue;
+    const direct = directModeOf(d);
+    if (direct && d.activeMode !== direct.index) {
+      client.updateMode(d.index, direct);
+      d.activeMode = direct.index;
+    }
+  }
+}
+
+// Each LED's palette position comes from where its light sits in the rig.
+function recomputeLayout() {
+  lights = buildLights(devices, keys, settings.rig);
+  leds = devices.map(d => Array.from(d.leds, () => ({ p: 0, n: [0.5, 0.5, 0.5], area: 'case' })));
+  for (const l of lights) {
+    if (l.hidden) continue;
+    const z = devices[l.device].zones[l.zone];
+    const size = areaSize(settings.rig, l.area);
+    const box = l.area === 'desk' ? [size[0], DESK_EFFECT_HEIGHT, size[2]] : size;
+    const dir = FLOWS[l.area][settings.flow[l.area]];
+    ledPositions(l, l.count, z.matrix).forEach((pos, i) => {
+      const led = { p: flowPosition(pos, size, dir), n: pos.map((v, k) => v / box[k]), area: l.area };
+      if (dir === 'spiral') led.turn = spiralTurn(pos, size);
+      leds[l.device][l.ledStart + i] = led;
+    });
+  }
+  lastSolid = null;
+}
+
+// Blink one light white (everything else dark) so the user can see which physical part it is.
+function applyIdentify(d, colors, t) {
+  if (!identify) return colors;
+  if (Date.now() > identify.until) { identify = null; return colors; }
+  const out = colors.map(() => '#000000');
+  const l = lights.find(x => x.key === identify.key);
+  if (l && l.device === d.index && Math.floor(t * 3) % 2 === 0) out.fill('#ffffff', l.ledStart, l.ledStart + l.count);
+  return out;
+}
+
+// Hidden lights (like empty headers) stay dark.
+function maskHidden(d, colors) {
+  for (const l of lights) if (l.device === d.index && l.hidden) colors.fill('#000000', l.ledStart, l.ledStart + l.count);
+  return colors;
+}
+
+let lastSolid = null;
+let lastSolidAt = 0;
+function tick() {
+  if (status !== 'connected' || paused) return;
+  const t = Date.now() / 1000;
+  // Static looks only need sending once (and now and then, in case a device reset).
+  const solidKey = settings.motion === 'still' && !identify ? JSON.stringify([settings.palette, settings.brightness, settings.spread]) : null;
+  const send = !solidKey || solidKey !== lastSolid || t - lastSolidAt > SOLID_RESEND;
+  // Don't pile up packets if OpenRGB is slow to drain them (SMBus RAM is slow).
+  const backlogged = client.backlog > MAX_BACKLOG;
+  const sentAll = send && !backlogged;
+  devices.forEach((d, i) => {
+    if (isBuiltIn(d) || !directModeOf(d)) return;
+    const colors = applyIdentify(d, maskHidden(d, renderFrame(leds[i], settings, t, i)), t);
+    frames[d.index] = colors;
+    if (!send) return;
+    if (backlogged) { stats.skipped++; return; }
+    client.updateLeds(d.index, colors);
+    stats.sent++;
+  });
+  if (solidKey && sentAll) { lastSolid = solidKey; lastSolidAt = t; }
+}
+setInterval(tick, 1000 / FPS);
+setInterval(() => broadcast('frame', frames), 1000 / FPS);
+
+async function loadDevices() {
+  devices = await client.getControllers();
+  keys = deviceKeys(devices);
+  frames = {};
+  recomputeLayout();
+  takeControl();
+  pushState();
+}
+
+let reconnectTimer = null;
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, RECONNECT_DELAY);
+}
+
+async function connect() {
+  status = 'connecting';
+  pushState();
+  const c = new OpenRGBClient({ name: 'RGB Studio' });
+  try {
+    await c.connect();
+    client = c;
+    status = 'connected';
+    c.on('devicesChanged', () => loadDevices().catch(e => console.error('Reloading devices failed:', e.message)));
+    c.on('close', () => { if (client === c) { status = 'disconnected'; pushState(); scheduleReconnect(); } });
+    c.on('error', () => {}); // 'close' follows and handles it
+    await loadDevices();
+    console.log(`Connected to OpenRGB (protocol ${c.protocol}), ${devices.length} devices`);
+  } catch (e) {
+    c.close();
+    if (client === c) client = null;
+    status = 'disconnected';
+    pushState();
+    scheduleReconnect();
+  }
+}
+
+// ---- input checks ---------------------------------------------------------------------------
+
+const num = (v, lo, hi) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) throw new Error(`not a number: ${v}`);
+  return Math.max(lo, Math.min(hi, n));
+};
+const requireConnected = () => { if (status !== 'connected') throw new Error('OpenRGB is not connected'); };
+const deviceAt = index => {
+  requireConnected();
+  const d = devices.find(x => x.index === index);
+  if (!d) throw new Error('unknown device');
+  return d;
+};
+const layoutChanged = () => { recomputeLayout(); save(); pushState(); return { ok: true }; };
+
+// ---- API -------------------------------------------------------------------------------------
+
+const routes = {
+  'GET /api/state': () => publicState(),
+
+  // Pick a scene, or tweak the current look.
+  'POST /api/scene': body => {
+    const scene = SCENES[body.scene];
+    if (scene) Object.assign(settings, { scene: body.scene, motion: scene.motion, palette: [...scene.palette], background: scene.background ?? 0 });
+    if (MOTIONS.includes(body.motion)) settings.motion = body.motion;
+    if (Array.isArray(body.palette) && body.palette.length && body.palette.every(isHex)) settings.palette = body.palette.slice(0, 8);
+    for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) settings[k] = num(body[k], 0, 100);
+    if (status === 'connected') takeControl();
+    lastSolid = null;
+    save();
+    pushState();
+    return { ok: true };
+  },
+
+  'POST /api/flow': body => {
+    if (!FLOWS[body.area] || !(body.direction in FLOWS[body.area])) throw new Error('unknown flow direction');
+    settings.flow = { ...settings.flow, [body.area]: body.direction };
+    return layoutChanged();
+  },
+
+  // Hand a device back to the scene, or give it a built-in hardware effect.
+  'POST /api/device': body => {
+    const d = deviceAt(body.index);
+    const key = keys[d.index];
+    if (body.mode === undefined || body.mode === null) {
+      delete settings.builtIn[key];
+      takeControl();
+    } else {
+      const m = d.modes[body.mode];
+      if (!m) throw new Error('unknown mode');
+      if (Array.isArray(body.colors) && body.colors.length && body.colors.every(isHex) && m.colorsMax > 0) {
+        m.colors = body.colors.slice(0, m.colorsMax);
+        m.colorMode = COLOR_MODE.MODE_SPECIFIC;
+      }
+      if (body.speed !== undefined && (m.flags & MODE_FLAG.HAS_SPEED)) m.speed = num(body.speed, Math.min(m.speedMin, m.speedMax), Math.max(m.speedMin, m.speedMax));
+      if (body.brightness !== undefined && (m.flags & MODE_FLAG.HAS_BRIGHTNESS)) m.brightness = num(body.brightness, m.brightnessMin, m.brightnessMax);
+      settings.builtIn[key] = { mode: m.index };
+      client.updateMode(d.index, m);
+      d.activeMode = m.index;
+      delete frames[d.index];
+    }
+    save();
+    pushState();
+    return { ok: true };
+  },
+
+  'POST /api/rescan': () => { requireConnected(); client.rescan(); return { ok: true }; },
+
+  // Move or reshape one light. `patch` holds any light fields; `reset` drops the user's edits.
+  'POST /api/light': body => {
+    const l = lights.find(x => x.key === body.key);
+    if (!l) throw new Error('unknown light');
+    if (body.reset) delete settings.rig.lights[l.key];
+    else settings.rig.lights[l.key] = { ...settings.rig.lights[l.key], ...cleanLight(body.patch || {}) };
+    return layoutChanged();
+  },
+
+  // Case size, placement and spot, desk size. Picking a placement puts the case back beside the desk.
+  'POST /api/rig': body => {
+    const shape = cleanRigShape(body);
+    if (shape.case?.placement && !('spot' in shape.case)) shape.case.spot = null;
+    if (shape.case) settings.rig.case = { ...settings.rig.case, ...shape.case };
+    if (shape.desk) settings.rig.desk = { ...settings.rig.desk, ...shape.desk };
+    return layoutChanged();
+  },
+
+  // A whole rig file (see docs/rig-format.md), e.g. one written by Claude from the shared prompt.
+  'POST /api/rig/import': body => {
+    const r = body.rig;
+    if (!r || typeof r !== 'object') throw new Error('expected { rig: {...} }');
+    const shape = cleanRigShape(r);
+    const next = {
+      case: { ...settings.rig.case, ...shape.case },
+      desk: { ...settings.rig.desk, ...shape.desk },
+      props: Array.isArray(r.props) ? r.props.map(cleanProp) : null,
+      lights: {},
+    };
+    const known = new Set(lights.map(l => l.key));
+    for (const [key, o] of Object.entries(r.lights || {})) if (known.has(key)) next.lights[key] = cleanLight(o);
+    settings.rig = next;
+    return layoutChanged();
+  },
+
+  'POST /api/rig/reset': () => {
+    settings.rig = structuredClone(DEFAULT_RIG);
+    return layoutChanged();
+  },
+
+  'POST /api/identify': body => {
+    if (!lights.some(x => x.key === body.key)) throw new Error('unknown light');
+    identify = { key: body.key, until: Date.now() + 4000 };
+    return { ok: true };
+  },
+
+  // Store the current look on the PC itself: in device memory where possible, and as an OpenRGB profile.
+  'POST /api/save': async body => {
+    requireConnected();
+    const style = body.style === 'still' ? 'still' : 'moving';
+    paused = true;
+    try {
+      const results = await saveToPc(client, { devices, frames, lights, look: settings, style, isBuiltIn });
+      settings.saved = { at: new Date().toISOString(), style };
+      save();
+      startup = await startupStatus();
+      return { ok: true, profile: PROFILE, results, startup };
+    } finally {
+      // OpenRGB writes the profile on a background thread, so give it a moment before taking the
+      // devices back. Live control resumes; the saved profile is restored when RGB Studio exits.
+      setTimeout(() => {
+        paused = false;
+        if (status !== 'connected') return;
+        devices.forEach(d => { d.activeMode = -1; });
+        takeControl();
+        pushState();
+      }, 1500);
+    }
+  },
+
+  'POST /api/startup-profile': async () => {
+    startup = await enableStartupProfile();
+    pushState();
+    return { ok: true, startup };
+  },
+};
+
+// ---- HTTP ------------------------------------------------------------------------------------
+
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.md': 'text/markdown; charset=utf-8', '.png': 'image/png' };
+const ALLOWED_HOSTS = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`]);
+
+// Only this page may drive the API: blocks other websites (CSRF) and DNS-rebinding tricks.
+function allowed(req) {
+  if (!ALLOWED_HOSTS.has(req.headers.host)) return false;
+  if (req.method !== 'POST') return true;
+  const origin = req.headers.origin;
+  if (origin && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, ''))) return false;
+  return (req.headers['content-type'] || '').startsWith('application/json');
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', c => {
+      size += c.length;
+      if (size > 1e6) { reject(new Error('request too large')); req.destroy(); } else chunks.push(c);
+    });
+    req.on('end', () => {
+      try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); } catch { reject(new Error('invalid JSON')); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function serveFile(res, root, rel) {
+  const file = path.join(root, path.normalize('/' + rel));
+  if (!file.startsWith(root + path.sep)) { res.writeHead(403); return res.end(); }
+  fs.readFile(file, (err, data) => {
+    if (err) { res.writeHead(404); return res.end('not found'); }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.end(data);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
+  if (!allowed(req)) { res.writeHead(403); return res.end(); }
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === '/api/events') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.write(`event: state\ndata: ${JSON.stringify(publicState())}\n\n`);
+    sseClients.add(res);
+    pageOpened();
+    req.on('close', () => { sseClients.delete(res); if (!sseClients.size) pagesClosed(); });
+    return;
+  }
+
+  const route = routes[`${req.method} ${url.pathname}`];
+  if (route) {
+    try {
+      const out = await route(req.method === 'POST' ? await readBody(req) : {});
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(out));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
+  const p = url.pathname;
+  // Three.js is served straight from node_modules so everything works offline.
+  if (p.startsWith('/vendor/three/')) return serveFile(res, THREE_DIR, p.slice('/vendor/three/'.length));
+  if (p.startsWith('/shared/')) return serveFile(res, SHARED, p.slice('/shared/'.length));
+  serveFile(res, PUBLIC, p === '/' ? 'index.html' : p);
+});
+
+// ---- lifetime --------------------------------------------------------------------------------
+
+let exitTimer = null;
+function pageOpened() { clearTimeout(exitTimer); exitTimer = null; }
+function pagesClosed(delay = IDLE_EXIT) {
+  if (args.has('--keep-alive')) return;
+  clearTimeout(exitTimer);
+  exitTimer = setTimeout(() => shutdown('the page was closed'), delay);
+}
+
+// Hand the lights back to OpenRGB's saved profile on the way out, so they keep their saved look.
+async function shutdown(reason) {
+  console.log(`Stopping (${reason}).`);
+  try {
+    if (settings.saved && client?.connected) {
+      client.loadProfile(PROFILE);
+      await client.getProfiles(); // wait until OpenRGB has received it
+    }
+  } catch {}
+  flushSettings(settings);
+  client?.close();
+  process.exit(0);
+}
+process.on('SIGINT', () => shutdown('Ctrl+C'));
+process.on('SIGTERM', () => shutdown('asked to stop'));
+
+function openBrowser() {
+  const url = `http://${HOST}:${PORT}`;
+  const [cmd, cmdArgs] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
+    : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+  spawn(cmd, cmdArgs, { detached: true, stdio: 'ignore' }).unref();
+}
+
+server.on('error', e => {
+  if (e.code !== 'EADDRINUSE') throw e;
+  console.log('RGB Studio is already running.');
+  if (args.has('--open')) openBrowser();
+  process.exit(0);
+});
+server.listen(PORT, HOST, async () => {
+  console.log(`RGB Studio running at http://${HOST}:${PORT}`);
+  startup = await startupStatus();
+  connect();
+  if (args.has('--open')) openBrowser();
+  pagesClosed(FIRST_VISIT_EXIT);
+});

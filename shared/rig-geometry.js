@@ -1,0 +1,123 @@
+// Rig geometry, shared by the server (flow positions) and the browser (drawing and dragging).
+//
+// A rig has two areas, each with its own frame in centimetres:
+//   case: x = rear → front, y = bottom → top, z = motherboard tray → glass
+//   desk: x = left → right, y = height above the desk, z = back (wall) → front (you)
+//
+// Each light lies flat in one plane of its area ('xy', 'xz' or 'yz'). Its LEDs are laid out in
+// the light's own 2D frame (u, v), with w along the plane's normal, then rotated by `angle`
+// and placed at `pos`.
+
+export const CASE_GAP = 6;        // space between the case and the desk area, in cm
+export const DESK_HEIGHT = 75;    // used when the case stands on the floor
+const RING_GAP = 2.5;             // distance between the two LED rings of a "duo" fan
+const DOT_GAP = 1.2;
+const KEY_ASPECT = 1.1;           // keyboard rows are slightly taller than columns are wide
+
+// (u, v, w) in a light's own frame → offset in its area's frame.
+export function planeToArea(plane, [u, v, w]) {
+  if (plane === 'xz') return [u, w, -v];
+  if (plane === 'yz') return [w, v, -u];
+  return [u, v, w];
+}
+
+// LED positions in the light's own frame, before rotation and placement.
+export function ledLayout(light, count, matrix) {
+  const order = i => (light.flip ? count - 1 - i : i);
+  if (light.shape === 'ring') {
+    const rings = count % (light.rings || 1) === 0 ? light.rings || 1 : 1;
+    const per = count / rings;
+    return Array.from({ length: count }, (_, i) => {
+      const ring = Math.floor(i / per);
+      const a = Math.PI / 2 - (2 * Math.PI * (order(i) % per)) / per; // clockwise from the top
+      return [light.size * Math.cos(a), light.size * Math.sin(a), (ring - (rings - 1) / 2) * RING_GAP];
+    });
+  }
+  if (light.shape === 'bar') {
+    return Array.from({ length: count }, (_, i) => [count > 1 ? (order(i) / (count - 1) - 0.5) * light.size : 0, 0, 0]);
+  }
+  if (light.shape === 'matrix' && matrix) {
+    const { width, height, map } = matrix;
+    const w = light.size, h = (w * height * KEY_ASPECT) / width;
+    const out = Array.from({ length: count }, () => [0, 0, 0]);
+    map.forEach((row, y) => row.forEach((led, x) => {
+      if (led < count) out[led] = [((x + 0.5) / width - 0.5) * w, (0.5 - (y + 0.5) / height) * h, 0];
+    }));
+    return out;
+  }
+  return Array.from({ length: count }, (_, i) => [(order(i) - (count - 1) / 2) * DOT_GAP, 0, 0]);
+}
+
+// Bounding size (u, v) of a light's footprint in its own frame, used for drawing its body.
+export function lightExtent(light, matrix) {
+  if (light.shape === 'ring') return [light.size * 2, light.size * 2];
+  if (light.shape === 'matrix' && matrix) return [light.size, (light.size * matrix.height * KEY_ASPECT) / matrix.width];
+  if (light.shape === 'bar') return [light.size, 0];
+  return [0, 0];
+}
+
+// LED positions in the area's frame.
+export function ledPositions(light, count, matrix) {
+  const a = ((light.angle || 0) * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  return ledLayout(light, count, matrix).map(([u, v, w]) => {
+    const [x, y, z] = planeToArea(light.plane, [u * c - v * s, u * s + v * c, w]);
+    return [light.pos[0] + x, light.pos[1] + y, light.pos[2] + z];
+  });
+}
+
+export const areaSize = (rig, area) => (area === 'case' ? rig.case.size : [rig.desk.size[0], 0, rig.desk.size[1]]);
+
+// Where the middle of the case's footprint sits, in cm from the desk area's back-left corner, and
+// its turn in degrees (counter-clockwise seen from above). `rig.case.spot` sets it; otherwise the
+// case stands beside the desk: on the left with its front toward the desk and glass toward you,
+// on the right turned so its glass faces the desk and its front faces you.
+export function caseSpot(rig) {
+  if (rig.case.spot) return rig.case.spot;
+  const [length, , width] = rig.case.size;
+  const [deskWidth, deskDepth] = rig.desk.size;
+  return rig.case.placement.endsWith('right')
+    ? { x: deskWidth + CASE_GAP + width / 2, z: deskDepth / 2, turn: -90 }
+    : { x: -(CASE_GAP + length / 2), z: deskDepth / 2, turn: 0 };
+}
+
+// Where each area's origin sits in the shared world (y up), and its turn about the vertical axis
+// in radians. The desk area is the reference.
+export function areaFrames(rig) {
+  const [length, , width] = rig.case.size;
+  const spot = caseSpot(rig);
+  const turn = (spot.turn * Math.PI) / 180, c = Math.cos(turn), s = Math.sin(turn);
+  // The case turns around the middle of its footprint, so its corner moves with it.
+  const [hx, hz] = [length / 2, width / 2];
+  return {
+    desk: { origin: [0, rig.case.placement.startsWith('floor') ? DESK_HEIGHT : 0, 0], turn: 0 },
+    case: { origin: [spot.x - (hx * c + hz * s), 0, spot.z - (-hx * s + hz * c)], turn },
+  };
+}
+
+// Directions colors can travel in, as unit vectors in the area's frame. `null` means outward from
+// the center, and 'spiral' winds up around the case.
+const D = Math.SQRT1_2;
+export const FLOWS = {
+  case: { up: [0, 1, 0], down: [0, -1, 0], front: [1, 0, 0], rear: [-1, 0, 0], diagonal: [D, D, 0], out: null, spiral: 'spiral' },
+  desk: { right: [1, 0, 0], left: [-1, 0, 0], back: [0, 0, -1], front: [0, 0, 1], out: null },
+};
+
+const SPIRAL_TURNS = 2; // laps around the case from bottom to top
+
+// How far around the case a point is, seen from above: 0..1, one lap.
+export function spiralTurn(pos, size) {
+  const a = Math.atan2(pos[2] / size[2] - 0.5, pos[0] / size[0] - 0.5) / (2 * Math.PI);
+  return a - Math.floor(a);
+}
+
+// Palette position of a point: one unit spans the whole area, and colors travel along `dir`.
+// For a spiral, it's the distance along a coil that rises around the case.
+export function flowPosition(pos, size, dir) {
+  const n = pos.map((v, i) => (size[i] ? v / size[i] : 0.5));
+  if (!dir) return -2 * Math.hypot(n[0] - 0.5, n[1] - 0.5, n[2] - 0.5);
+  if (dir === 'spiral') return -(n[1] * SPIRAL_TURNS + spiralTurn(pos, size)) / (SPIRAL_TURNS + 1);
+  return -(n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2]);
+}
+
+// One full palette cycle takes 20 s at speed 0 and 1.5 s at speed 100, on an exponential curve.
+export const cycleSeconds = speed => 20 * Math.pow(0.075, speed / 100);

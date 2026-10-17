@@ -12,7 +12,7 @@ export const PLACEMENTS = ['desk-left', 'desk-right', 'floor-left', 'floor-right
 export const SHAPES = ['ring', 'bar', 'matrix', 'dots'];
 export const PLANES = ['xy', 'xz', 'yz'];
 export const BODIES = ['fan', 'ram', 'keyboard', 'mouse', null];
-const LIGHT_FIELDS = ['area', 'shape', 'pos', 'plane', 'size', 'angle', 'rings', 'flip', 'hidden', 'body', 'label'];
+const LIGHT_FIELDS = ['area', 'shape', 'pos', 'plane', 'size', 'angle', 'rings', 'flip', 'sweep', 'hidden', 'body', 'label'];
 
 const DESK_TYPES = new Set(['keyboard', 'mouse', 'mousemat', 'headset', 'headset_stand', 'gamepad', 'speaker', 'microphone', 'keypad', 'monitor', 'laptop']);
 
@@ -171,7 +171,7 @@ export function cleanLight(o) {
     else if (k === 'size') out.size = num(v, 0, 200);
     else if (k === 'angle') out.angle = num(v, -360, 360);
     else if (k === 'rings') out.rings = oneOf(Number(v), [1, 2]);
-    else if (k === 'flip' || k === 'hidden') out[k] = Boolean(v);
+    else if (k === 'flip' || k === 'sweep' || k === 'hidden') out[k] = Boolean(v);
     else if (k === 'label') out.label = String(v).slice(0, 60);
   }
   return out;

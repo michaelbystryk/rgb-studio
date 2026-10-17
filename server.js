@@ -10,7 +10,7 @@ import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
 import { SCENES, MOTIONS, BACKDROP_MOTIONS, renderFrame } from './src/effects.js';
 import { isHex } from './src/color.js';
 import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
-import { FLOWS, ledPositions, areaSize, flowPosition, spiralTurn } from './shared/rig-geometry.js';
+import { FLOWS, effectPositions, areaSize, flowPosition, spiralTurn } from './shared/rig-geometry.js';
 import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
@@ -103,7 +103,7 @@ function recomputeLayout() {
     const size = areaSize(settings.rig, l.area);
     const box = l.area === 'desk' ? [size[0], DESK_EFFECT_HEIGHT, size[2]] : size;
     const dir = FLOWS[l.area][settings.flow[l.area]];
-    ledPositions(l, l.count, z.matrix).forEach((pos, i) => {
+    effectPositions(l, l.count, z.matrix).forEach((pos, i) => {
       const led = { p: flowPosition(pos, size, dir), n: pos.map((v, k) => v / box[k]), area: l.area };
       if (dir === 'spiral') led.turn = spiralTurn(pos, size);
       leds[l.device][l.ledStart + i] = led;

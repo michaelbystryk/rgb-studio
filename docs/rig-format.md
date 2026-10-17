@@ -43,6 +43,7 @@ All sizes and positions are in centimetres.
 | `rings` | `1`, or `2` for fans lit on both faces. |
 | `angle` | Turns the light within its plane, in degrees. |
 | `flip` | `true` reverses the LED order, if colors run the wrong way. |
+| `sweep` | For fans lying flat (`plane` `xz`): `true` makes effects treat the fan as tilted up to face the glass, so rising effects sweep across it from the glass side instead of lighting it all at once. |
 | `hidden` | `true` when nothing is plugged into that zone. |
 | `body` | The model drawn around it: `fan`, `ram`, `keyboard`, `mouse` or `null`. |
 

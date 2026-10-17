@@ -65,6 +65,16 @@ export function ledPositions(light, count, matrix) {
   });
 }
 
+// Where effects treat each LED as being. Usually that is where it really is, but a fan lying flat
+// with `sweep` set is treated as tilted up to face the glass, standing on its own spot: its glass
+// side becomes its bottom, so effects that rise sweep across it instead of lighting it all at once.
+export function effectPositions(light, count, matrix) {
+  const pos = ledPositions(light, count, matrix);
+  if (!light.sweep || light.plane !== 'xz') return pos;
+  const [cx, cy, cz] = light.pos;
+  return pos.map(([x, y, z]) => [x, cy + light.size + (cz - z), cz + (y - cy)]);
+}
+
 export const areaSize = (rig, area) => (area === 'case' ? rig.case.size : [rig.desk.size[0], 0, rig.desk.size[1]]);
 
 // Where the middle of the case's footprint sits, in cm from the desk area's back-left corner, and

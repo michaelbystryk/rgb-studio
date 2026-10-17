@@ -196,6 +196,12 @@ function lightEditor(l) {
           el('option', { value: 1, selected: l.rings === 1 }, 'One ring'),
           el('option', { value: 2, selected: l.rings === 2 }, 'Two rings (front and back)'))));
     }
+    if (l.shape === 'ring' && l.plane === 'xz') {
+      kids.push(el('label', { class: 'side-field check' },
+        el('input', { type: 'checkbox', checked: !!l.sweep, onchange: e => patchLight(l.key, { sweep: e.target.checked }) }),
+        'Sweep across the fan',
+        el('span', { class: 'hint' }, 'Rising effects light it from the glass side to the back, instead of the whole fan at once. Turn ° picks the edge it starts from.')));
+    }
   }
   kids.push(el('div', { class: 'side-actions' },
     !l.hidden && el('button', { class: 'ghost small', onclick: () => identify(l) }, 'Identify'),
@@ -221,7 +227,7 @@ function moveArea(l, area) {
 
 // ---- share / import --------------------------------------------------------------------------
 
-const LIGHT_FIELDS = ['label', 'area', 'shape', 'pos', 'plane', 'size', 'angle', 'rings', 'flip', 'hidden', 'body'];
+const LIGHT_FIELDS = ['label', 'area', 'shape', 'pos', 'plane', 'size', 'angle', 'rings', 'flip', 'sweep', 'hidden', 'body'];
 function rigFile() {
   const { case: c, desk, props } = state.rig;
   return {

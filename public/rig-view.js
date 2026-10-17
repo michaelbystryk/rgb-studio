@@ -286,6 +286,7 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
     if (selBox) { selBox.removeFromParent(); selBox = null; }
     const target = caseSelected ? areas.case : pieces.find(x => x.light.key === selected)?.group;
     if (!target) return;
+    target.updateWorldMatrix(true, true); // the box is measured now, before the next render places the case
     selBox = new THREE.BoxHelper(target, COLORS.select);
     scene.add(selBox);
   }

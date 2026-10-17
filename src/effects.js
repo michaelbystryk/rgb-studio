@@ -30,7 +30,7 @@ export const SCENES = {
   storm: { label: 'Storm', motion: 'lightning', palette: ['#8000ff', '#0040ff', '#00c0ff'], background: 20 },
   radar: { label: 'Radar', motion: 'beam', palette: ['#00ff40', '#00ffc0'], background: 12 },
   comet: { label: 'Comet', motion: 'comet', palette: ['#ff00c0', '#00e0ff', '#8000ff', '#00ff60'] },
-  powerup: { label: 'Power Up', motion: 'fill', palette: ['#00c0ff', '#8000ff', '#ff00c0'] },
+  powerup: { label: 'Power Up', motion: 'fill', palette: ['#ff00c0', '#8000ff', '#0040ff', '#c000ff'] },
   matrix: { label: 'Matrix', motion: 'twinkle', palette: ['#00ff00', '#00a000', '#00ff40', '#003000'], background: 25 },
   sakura: { label: 'Sakura', motion: 'breathe', palette: ['#ff0060', '#ff00c0', '#c000ff', '#ff0030'] },
   sunset: { label: 'Sunset', motion: 'flow', palette: ['#ff2000', '#ff8000', '#ff0060', '#8000ff'] },
@@ -48,6 +48,7 @@ const BACKDROP_MAX = 0.5;     // background glow at 100%, as a share of full bri
 const TWINKLE_CHANCE = 0.35;  // share of LEDs that flash in each cycle
 const COMET_HEAD = 0.04;      // how sharply the comet's leading edge rises
 const BUBBLES_AT_ONCE = 4;
+const FILL_EDGE = 0.12;       // how soft the edge of a fill is, as a share of the rig
 
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const fract = v => v - Math.floor(v);
@@ -203,16 +204,17 @@ export function renderFrame(leds, look, t, seed = 0) {
       }
 
       case 'fill': {
-        // The first half of each pass fills, the second half empties from the start. The spread
-        // slider sets how soft the edge is.
-        const edge = 0.02 + spread * 0.25;
-        const pass = t / cycle, n = Math.floor(pass), f = pass - n;
+        // Each pass fills, empties from the start, then stays dark for a while before the next
+        // color. The spread slider sets that dark gap: none, up to twice as long as the fill.
+        const gap = spread * 2;
+        const pass = t / cycle, n = Math.floor(pass);
+        const u = (pass - n) * (2 + gap); // 0..1 filling, 1..2 emptying, then dark
         const color = colors[n % colors.length];
         return leds.map(l => {
           const s = -l.p;
-          const k = f < 0.5
-            ? clamp01((f * 2 * (1 + edge) - s) / edge)
-            : clamp01((s - (f - 0.5) * 2 * (1 + edge) + edge) / edge);
+          const k = u < 1 ? clamp01((u * (1 + FILL_EDGE) - s) / FILL_EDGE)
+            : u < 2 ? clamp01((s - (u - 1) * (1 + FILL_EDGE) + FILL_EDGE) / FILL_EDGE)
+            : 0;
           return shade(color, smooth(k));
         });
       }

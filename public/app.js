@@ -291,7 +291,7 @@ const SPREAD_TEXT = {
   beam: ['Beam width', 'a thin line or a wide sweep'],
   bubbles: ['Bubble size', 'how far each ring grows'],
   lightning: ['Afterglow', 'how long each flash lingers'],
-  fill: ['Edge softness', 'a sharp line or a soft blend'],
+  fill: ['Dark gap', 'how long it stays black before the next color'],
   default: ['Gradient width', 'how many colors show on a device at once'],
 };
 const PALETTE_HINT = {

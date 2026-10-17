@@ -191,10 +191,10 @@ function lightEditor(l) {
         el('label', {}, 'Turn °', numberInput(l.angle, angle => patchLight(l.key, { angle }), { step: 15 }))));
     }
     if (l.shape === 'ring') {
-      kids.push(el('label', { class: 'side-field' }, 'LED rings',
+      kids.push(el('label', { class: 'side-field' }, 'Lit faces',
         el('select', { onchange: e => patchLight(l.key, { rings: +e.target.value }) },
-          el('option', { value: 1, selected: l.rings === 1 }, 'One ring'),
-          el('option', { value: 2, selected: l.rings === 2 }, 'Two rings (front and back)'))));
+          el('option', { value: 1, selected: l.rings === 1 }, 'One face: a single ring of lights'),
+          el('option', { value: 2, selected: l.rings === 2 }, 'Both faces: a ring on the front and the back'))));
     }
     if (l.shape === 'ring' && l.plane === 'xz') {
       kids.push(el('label', { class: 'side-field check' },

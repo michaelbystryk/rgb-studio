@@ -80,9 +80,10 @@ const fbm = (x, y, z) => 0.6 * noise3(x, y, z) + 0.3 * noise3(2 * x, 2 * y, 2 * 
 // (rear to front, bottom to top), the desk from above (left to right, front to back).
 export const facing = l => l.face ?? (l.area === 'desk' ? [l.n[0] - 0.5, 0.5 - l.n[2]] : [l.n[0] - 0.5, l.n[1] - 0.5]);
 
-// Colors for one device. Each LED is { p, n, area, turn? }: p is its position along the flow
+// Colors for one device. Each LED is { p, n, area, turn?, lap? }: p is its position along the flow
 // (0 where the flow starts, about -1 where it ends; see flowPosition), n its position in its area
-// scaled to 0..1 on each axis, and turn (spiral flow only) how far around the case it sits.
+// scaled to 0..1 on each axis, turn (spiral flow only) how far around the case it sits, and lap
+// set for a spin, whose end meets its start.
 // `seed` keeps each device's random effects independent.
 export function renderFrame(leds, look, t, seed = 0) {
   const brightness = look.brightness / 100;
@@ -91,8 +92,9 @@ export function renderFrame(leds, look, t, seed = 0) {
   const colors = look.palette.map(hexToRgb);
   const cycle = cycleSeconds(look.speed);
   const cycles = 0.25 + spread * 1.75; // how many palette repeats fit across an area
-  // Gradient position. A spiral puts one palette repeat around each lap, so the colors meet up.
-  const grad = l => (l.turn === undefined ? l.p * cycles : -(l.n[1] * cycles + l.turn));
+  // Gradient position. A spiral puts one palette repeat around each lap, and a spin whole repeats
+  // around its one lap, so the colors meet up.
+  const grad = l => (l.turn !== undefined ? -(l.n[1] * cycles + l.turn) : l.lap ? l.p * Math.max(1, Math.round(cycles)) : l.p * cycles);
   const shade = (rgb, k) => rgbToHex(rgb.map(v => v * brightness * k));
   const at = (l, phase, k = 1) => shade(samplePalette(stops, grad(l) + phase), k);
 
@@ -131,18 +133,20 @@ export function renderFrame(leds, look, t, seed = 0) {
         // The head sweeps from just before the start to just past the end, so each pass enters
         // and leaves the rig fully. Each comet takes one cycle to cross; with several at once, a
         // new one sets off every cycle / comets, and where they overlap the brighter one shows.
+        // Round a spin there's no edge to enter by: each lap starts where the last one ended, and
+        // the comet before keeps its tail until it has passed.
         const tail = 0.05 + spread * 0.45;
         const span = 1 + tail + COMET_HEAD;
         const comets = cometsOf(look);
         const launches = (t / cycle) * comets, last = Math.floor(launches);
         const heads = [];
-        for (let m = last; m > last - comets; m--) {
-          heads.push({ head: ((launches - m) / comets) * span - COMET_HEAD, color: colors[((m % colors.length) + colors.length) % colors.length] });
+        for (let m = last; m >= last - comets; m--) {
+          heads.push({ f: (launches - m) / comets, color: colors[((m % colors.length) + colors.length) % colors.length] });
         }
         return leds.map(l => {
           let best = 0, color = colors[0];
           for (const h of heads) {
-            const d = h.head + l.p;
+            const d = (l.lap ? h.f : h.f * span - COMET_HEAD) + l.p;
             const k = d < 0 ? Math.max(0, 1 + d / COMET_HEAD) : Math.max(0, 1 - d / tail) ** 2;
             if (k > best) { best = k; color = h.color; }
           }
@@ -162,15 +166,15 @@ export function renderFrame(leds, look, t, seed = 0) {
       }
 
       case 'beam': {
-        // A beam turns around the middle of each area, leaving a fading trail like a radar screen.
-        // `spin` (see spinPosition) is where it reaches each LED, with the empty stretches shortened.
+        // A beam sweeps along the flow leaving a fading trail, like a radar screen when the flow
+        // spins. Along a straight flow it runs on past the end until its trail has gone, so the
+        // start and the end never light together.
         const width = 0.1 + spread * 0.35;
         const turn = fract(t / cycle);
         const color = samplePalette(stops, t / (cycle * colors.length));
         return leds.map(l => {
-          const [a, b] = facing(l);
-          const behind = fract(turn - (l.spin ?? Math.atan2(b, a) / (2 * Math.PI))); // 0 at the beam, growing behind it
-          return shade(color, behind < width ? (1 - behind / width) ** 1.5 : 0);
+          const behind = l.lap ? fract(turn + l.p) : turn * (1 + width) + l.p; // 0 at the beam, growing behind it
+          return shade(color, behind >= 0 && behind < width ? (1 - behind / width) ** 1.5 : 0);
         });
       }
 

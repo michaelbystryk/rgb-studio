@@ -141,14 +141,17 @@ export function worldBox(points) {
 }
 
 // Directions colors can travel in, as unit vectors in the area's frame. `null` means outward from
-// the center, and 'spiral' winds up around the case. `rig` is for all lights together, in the
+// the center, 'spiral' winds up around the case, and the spins turn around the middle of the view
+// people look at (see spinPosition). `rig` is for all lights together, in the
 // shared world frame (the desk's axes, y up).
 const D = Math.SQRT1_2;
 export const FLOWS = {
-  case: { up: [0, 1, 0], down: [0, -1, 0], front: [1, 0, 0], rear: [-1, 0, 0], diagonal: [D, D, 0], out: null, spiral: 'spiral' },
-  desk: { right: [1, 0, 0], left: [-1, 0, 0], back: [0, 0, -1], front: [0, 0, 1], out: null },
-  rig: { up: [0, 1, 0], down: [0, -1, 0], right: [1, 0, 0], left: [-1, 0, 0], front: [0, 0, 1], back: [0, 0, -1], out: null },
+  case: { up: [0, 1, 0], down: [0, -1, 0], front: [1, 0, 0], rear: [-1, 0, 0], diagonal: [D, D, 0], out: null, spiral: 'spiral', clockwise: 'clockwise', anticlockwise: 'anticlockwise' },
+  desk: { right: [1, 0, 0], left: [-1, 0, 0], back: [0, 0, -1], front: [0, 0, 1], out: null, clockwise: 'clockwise', anticlockwise: 'anticlockwise' },
+  rig: { up: [0, 1, 0], down: [0, -1, 0], right: [1, 0, 0], left: [-1, 0, 0], front: [0, 0, 1], back: [0, 0, -1], out: null, clockwise: 'clockwise', anticlockwise: 'anticlockwise' },
 };
+
+export const SPINS = ['clockwise', 'anticlockwise'];
 
 const SPIRAL_TURNS = 2; // laps around the case from bottom to top
 
@@ -170,16 +173,10 @@ export function flowPosition(pos, size, dir) {
   return -dir.reduce((sum, d, i) => sum + d * (d < 0 ? n[i] - 1 : n[i]), 0) / dir.reduce((sum, d) => sum + Math.abs(d), 0);
 }
 
-// How far round a radar beam's turn an LED sits, 0..1 in the order the beam reaches it. `face` is
-// the LED on the view people look at, centered on 0 (across, up), and `dir` the flow direction in
-// that view. The beam starts pointing at the side the flow starts on and sweeps over the top to the
-// other side; up and down go round through the right. With no direction it starts pointing right
-// and turns counter-clockwise.
+// How far round a spin flow an LED sits, 0..1, starting straight up like a clock hand. `face` is the
+// LED on the view people look at, centered on 0 (across, up); `dir` is 'clockwise' or 'anticlockwise'.
 export function spinPosition([a, b], dir) {
-  const [dx, dy] = dir || [0, 0];
-  const start = dx || dy ? Math.atan2(-dy, -dx) / (2 * Math.PI) : 0;
-  const sense = dx > 0 ? -1 : dx < 0 ? 1 : dy < 0 ? -1 : 1;
-  const s = sense * (Math.atan2(b, a) / (2 * Math.PI) - start);
+  const s = Math.atan2(dir === 'clockwise' ? a : -a, b) / (2 * Math.PI);
   return s - Math.floor(s);
 }
 

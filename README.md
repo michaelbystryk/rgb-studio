@@ -7,7 +7,7 @@ A simpler way to light up a PC with [OpenRGB](https://openrgb.org). Pick a look,
 - **Looks:** 21 ready-made scenes (Synthwave, Aurora, Lava Lamp, Storm, Comet, Matrix and more), each one editable: pick the motion, colors, speed, brightness, gradient width and how much the dark gaps glow. Give the desk its own look, or run one look across everything.
 - **Motions:** flow, bounce, breathe, twinkle, comet, drift, beam, bubbles, lightning and fill.
 - **Saved looks:** name and save everything about a look: the case and desk looks, motion, speed and every other setting, whether colors travel together or separately and in which direction, Empty space, and any device running its own built-in effect. Click a saved look to bring it back. Looks are switched in the editor, not from the tray.
-- **Your setup in 3D:** your case, desk and monitor, lit live. Drag each light to where it really sits, move and turn the case, and pick which way colors travel: up, across, out from the center, or in a spiral around the case. Colors can travel across the whole rig together (rising from the case on the floor up through the desk and monitor, say) or separately for the case and the desk. Lights on the back of a monitor glow on the wall behind it.
+- **Your setup in 3D:** your case, desk and monitor, lit live. Drag each light to where it really sits, move and turn the case, and pick which way colors travel: up, across, out from the center, spinning around the middle, or in a spiral around the case. Radar starts out spinning; pick a direction and it sweeps that way instead. Colors can travel across the whole rig together (rising from the case on the floor up through the desk and monitor, say) or separately for the case and the desk. Lights on the back of a monitor glow on the wall behind it.
 - **Save to PC:** a small tray player keeps your look playing, in sync, after the editor closes. Pick still colors for when you're not using it.
 
 ## Why RGB Studio: it stays out of the way
@@ -161,7 +161,7 @@ The format is described in [docs/rig-format.md](docs/rig-format.md).
 server.js              local web server, effect loop and API
 src/openrgb.js         OpenRGB SDK client (protocol 5, plus profiles and settings on 6; no dependencies)
 src/effects.js         scenes, and the renderer that turns LED positions into colors
-src/layout.js          where each LED sits for the effects: along the flow, around the radar, and on the view
+src/layout.js          where each LED sits for the effects: along the flow, around a spin, and on the view
 src/rig.js             default positions for each kind of device, and rig validation
 src/persist.js         stores still colors on devices and in the OpenRGB profile
 src/player-export.js   Save to PC: records each look as a seamless loop for the player

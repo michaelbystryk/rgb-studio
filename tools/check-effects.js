@@ -116,7 +116,7 @@ for (const flow of configs) {
           problems.push(`${where}: everything dark for ${(r.longestDark * 100).toFixed(0)}% of the loop`);
         }
         // Direction: the time each LED is brightest should follow its place along the flow.
-        if (TRAVELING.includes(motion) && motion !== 'beam' && spread === 0) {
+        if (TRAVELING.includes(motion) && spread === 0) {
           const pos = r.visible.map(([d, i]) => -r.leds[d][i].p);
           const per = cycleSeconds(look.speed);
           const t0 = r.peak[pos.indexOf(Math.min(...pos))].t;

@@ -317,12 +317,18 @@ const routes = {
     if (body.own === false) settings.desk = null;
     else if (body.own === true || body.area === 'desk') settings.desk ??= Object.fromEntries(LOOK_KEYS.map(k => [k, structuredClone(settings[k])]));
     const look = body.area === 'desk' ? settings.desk : settings;
-    const scene = SCENES[body.scene];
+    const scene = SCENES[body.scene], wasBeam = look.motion === 'beam';
     if (scene) Object.assign(look, { scene: body.scene, motion: scene.motion, palette: [...scene.palette], background: scene.background ?? 0 });
     if (MOTIONS.includes(body.motion)) look.motion = body.motion;
     if (Array.isArray(body.palette) && body.palette.length && body.palette.every(isHex)) look.palette = body.palette.slice(0, 8);
     for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) look[k] = num(body[k], 0, k === 'speed' ? MAX_SPEED : 100);
     if (body.comets !== undefined) look.comets = Math.round(num(body.comets, 1, MAX_COMETS));
+    // A radar spins until people pick another flow for it, on the parts this look lights.
+    if (look.motion === 'beam' && !wasBeam) {
+      const parts = settings.flow.together ? ['rig'] : !settings.desk ? ['case', 'desk'] : [look === settings.desk ? 'desk' : 'case'];
+      settings.flow = { ...settings.flow, ...Object.fromEntries(parts.map(p => [p, 'clockwise'])) };
+      recomputeLayout();
+    }
     if (status === 'connected') takeControl();
     lastSolid = null;
     save();

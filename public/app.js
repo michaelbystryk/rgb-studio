@@ -30,9 +30,9 @@ const ICONS = {
 const TYPE_LABEL = { dram: 'Memory', gpu: 'Graphics card', motherboard: 'Motherboard', keyboard: 'Keyboard', mouse: 'Mouse', headset: 'Headset', monitor: 'Monitor', ledstrip: 'LED controller', cooler: 'Cooler' };
 const MOTION_LABEL = { still: 'Still', flow: 'Flow', bounce: 'Bounce', breathe: 'Breathe', twinkle: 'Twinkle', comet: 'Comet', noise: 'Drift', beam: 'Beam', bubbles: 'Bubbles', lightning: 'Lightning', fill: 'Fill' };
 const FLOW_LABEL = {
-  case: { up: 'Rising ↑', down: 'Falling ↓', front: 'Rear → front', rear: 'Front → rear', diagonal: 'Diagonal ↗', out: 'From center', spiral: 'Spiral ↻' },
-  desk: { right: 'Left → right', left: 'Right → left', back: 'Toward monitor', front: 'Toward me', out: 'From center' },
-  rig: { up: 'Rising ↑', down: 'Falling ↓', right: 'Left → right', left: 'Right → left', back: 'Toward monitor', front: 'Toward me', out: 'From center' },
+  case: { up: 'Rising ↑', down: 'Falling ↓', front: 'Rear → front', rear: 'Front → rear', diagonal: 'Diagonal ↗', out: 'From center', spiral: 'Spiral ↻', clockwise: 'Spin ↻', anticlockwise: 'Spin ↺' },
+  desk: { right: 'Left → right', left: 'Right → left', back: 'Toward monitor', front: 'Toward me', out: 'From center', clockwise: 'Spin ↻', anticlockwise: 'Spin ↺' },
+  rig: { up: 'Rising ↑', down: 'Falling ↓', right: 'Left → right', left: 'Right → left', back: 'Toward monitor', front: 'Toward me', out: 'From center', clockwise: 'Spin ↻', anticlockwise: 'Spin ↺' },
 };
 // Where a light can be mounted; each sets its plane and pins one coordinate.
 const MOUNTS = {

@@ -117,6 +117,7 @@ function recomputeLayout() {
         const rel = world.map((v, k) => v - min[k]);
         const led = { p: flowPosition(rel, size, dir), n: rel.map((v, k) => (size[k] ? v / size[k] : 0.5)), area: l.area };
         leds[l.device][l.ledStart + i] = led;
+        led.face = [led.n[0] - 0.5, led.n[1] - 0.5]; // the whole rig seen from the front, so one radar or bubble spans it
         return led;
       });
       squeezeGaps(list.map(led => led.p), settings.gaps.rig / 100).forEach((p, i) => { list[i].p = p; });

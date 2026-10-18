@@ -78,7 +78,7 @@ const fbm = (x, y, z) => 0.6 * noise3(x, y, z) + 0.3 * noise3(2 * x, 2 * y, 2 * 
 
 // An LED's position on the view people actually look at, centered on 0: the case from the side
 // (rear to front, bottom to top), the desk from above (left to right, back to front).
-const facing = l => (l.area === 'desk' ? [l.n[0] - 0.5, 0.5 - l.n[2]] : [l.n[0] - 0.5, l.n[1] - 0.5]);
+const facing = l => l.face ?? (l.area === 'desk' ? [l.n[0] - 0.5, 0.5 - l.n[2]] : [l.n[0] - 0.5, l.n[1] - 0.5]);
 
 // Colors for one device. Each LED is { p, n, area, turn? }: p is its position along the flow
 // (0 where the flow starts, about -1 where it ends; see flowPosition), n its position in its area

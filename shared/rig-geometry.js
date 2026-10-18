@@ -159,12 +159,14 @@ export function spiralTurn(pos, size) {
 }
 
 // Palette position of a point: one unit spans the whole area, and colors travel along `dir`.
-// For a spiral, it's the distance along a coil that rises around the case.
+// For a spiral, it's the distance along a coil that rises around the case. Distance is measured
+// from the side the flow starts on, so p is 0 there and falls toward -1 whichever way it runs;
+// comet and fill count on that.
 export function flowPosition(pos, size, dir) {
   const n = pos.map((v, i) => (size[i] ? v / size[i] : 0.5));
   if (!dir) return -2 * Math.hypot(n[0] - 0.5, n[1] - 0.5, n[2] - 0.5);
   if (dir === 'spiral') return -(n[1] * SPIRAL_TURNS + spiralTurn(pos, size)) / (SPIRAL_TURNS + 1);
-  return -(n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2]);
+  return -dir.reduce((sum, d, i) => sum + d * (d < 0 ? n[i] - 1 : n[i]), 0);
 }
 
 // One full palette cycle takes 20 s at speed 0, 1.5 s at 100 and about 0.5 s at MAX_SPEED, on an

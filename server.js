@@ -112,13 +112,19 @@ function recomputeLayout() {
   lastSolid = null;
 }
 
-// Blink one light white (everything else dark) so the user can see which physical part it is.
+// Blink one light white (everything else dark) so the user can see which physical part it is. With
+// `start`, light its first LED white and the next few pink instead, so the 3D view and the real part
+// can be lined up.
+const START_TRAIL = ['#ffffff', '#ff0080', '#a00050', '#500028'];
+const IDENTIFY_SECONDS = 4, START_SECONDS = 30;
 function applyIdentify(d, colors, t) {
   if (!identify) return colors;
   if (Date.now() > identify.until) { identify = null; return colors; }
   const out = colors.map(() => '#000000');
   const l = lights.find(x => x.key === identify.key);
-  if (l && l.device === d.index && Math.floor(t * 3) % 2 === 0) out.fill('#ffffff', l.ledStart, l.ledStart + l.count);
+  if (!l || l.device !== d.index) return out;
+  if (identify.start) START_TRAIL.slice(0, l.count).forEach((c, i) => { out[l.ledStart + i] = c; });
+  else if (Math.floor(t * 3) % 2 === 0) out.fill('#ffffff', l.ledStart, l.ledStart + l.count);
   return out;
 }
 
@@ -265,6 +271,8 @@ const routes = {
     if (!l) throw new Error('unknown light');
     if (body.reset) delete settings.rig.lights[l.key];
     else settings.rig.lights[l.key] = { ...settings.rig.lights[l.key], ...cleanLight(body.patch || {}) };
+    // Keep showing the first LEDs while the user turns the light to line it up.
+    if (identify?.start && identify.key === l.key) identify.until = Date.now() + START_SECONDS * 1000;
     return layoutChanged();
   },
 
@@ -301,7 +309,7 @@ const routes = {
 
   'POST /api/identify': body => {
     if (!lights.some(x => x.key === body.key)) throw new Error('unknown light');
-    identify = { key: body.key, until: Date.now() + 4000 };
+    identify = { key: body.key, start: !!body.start, until: Date.now() + (body.start ? START_SECONDS : IDENTIFY_SECONDS) * 1000 };
     return { ok: true };
   },
 

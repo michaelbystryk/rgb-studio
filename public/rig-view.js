@@ -113,11 +113,11 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L, H, W)), new THREE.LineBasicMaterial({ color: COLORS.panelEdge }));
     outline.position.set(L / 2, H / 2, W / 2);
     group.add(outline);
-    // Every PC has a motherboard; draw a plain one for context.
-    const board = boxWithEdges([L * 0.62, H * 0.62, 0.4], flat(COLORS.part), COLORS.partEdge);
+    // Every PC has a motherboard; outline it faintly so it doesn't hide the lights in front of it.
+    const boardGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(L * 0.62, H * 0.62, 0.4));
+    const board = new THREE.LineSegments(boardGeo, new THREE.LineBasicMaterial({ color: COLORS.partEdge, transparent: true, opacity: 0.3 }));
     board.position.set(L * 0.36, H * 0.6, 0.5);
     group.add(board);
-    caseParts.push(board);
   }
 
   function buildDesk(group, [DW, , DD], floorCase) {

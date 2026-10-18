@@ -94,6 +94,12 @@ function identify(light) {
   toast(`Blinking “${light.label}” white on your PC…`);
 }
 
+function showStart(light) {
+  if (state.devices[light.device]?.builtIn) return toast(`${light.label} is running a built-in effect. Switch it back to the scene first.`);
+  tryPost('/api/identify', { key: light.key, start: true });
+  toast(`On your PC, “${light.label}” now shows its first LED in white, with pink after it. Turn its lights until the 3D view shows the same.`);
+}
+
 function mountOf(light) {
   const [L, H, W] = state.rig.case.size;
   const [x, y, z] = light.pos;
@@ -205,6 +211,7 @@ function lightEditor(l) {
   }
   kids.push(el('div', { class: 'side-actions' },
     !l.hidden && el('button', { class: 'ghost small', onclick: () => identify(l) }, 'Identify'),
+    !l.hidden && l.shape === 'ring' && el('button', { class: 'ghost small', title: 'Light the first LED of this fan on your PC and here, to line them up', onclick: () => showStart(l) }, 'Show first LED'),
     !l.hidden && l.shape !== 'matrix' && reverseButton(l),
     el('button', { class: 'ghost small', onclick: () => patchLight(l.key, { hidden: !l.hidden }) }, l.hidden ? 'It is connected' : 'Nothing connected'),
     el('button', { class: 'link', onclick: () => tryPost('/api/light', { key: l.key, reset: true }) }, 'Reset')));

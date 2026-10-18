@@ -8,7 +8,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
-import { SCENES, MOTIONS, BACKDROP_MOTIONS, renderFrame } from './src/effects.js';
+import { SCENES, MOTIONS, BACKDROP_MOTIONS, MAX_COMETS, renderFrame } from './src/effects.js';
 import { isHex } from './src/color.js';
 import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
 import { FLOWS, MAX_SPEED, effectPositions, areaSize, areaToWorld, worldBox, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
@@ -192,7 +192,7 @@ function stillFrame(d) {
 }
 
 // The look for an area. The desk can have its own; otherwise it shares the case's.
-const LOOK_KEYS = ['scene', 'motion', 'palette', 'speed', 'brightness', 'spread', 'background'];
+const LOOK_KEYS = ['scene', 'motion', 'palette', 'speed', 'brightness', 'spread', 'background', 'comets'];
 const lookFor = area => (area === 'desk' && settings.desk ? { ...settings, ...settings.desk } : settings);
 
 function renderDevice(i, t) {
@@ -289,6 +289,7 @@ function cleanLook(look, current) {
   if (MOTIONS.includes(look.motion)) next.motion = look.motion;
   if (Array.isArray(look.palette) && look.palette.length && look.palette.every(isHex)) next.palette = look.palette.slice(0, 8);
   for (const k of ['speed', 'brightness', 'spread', 'background']) if (Number.isFinite(look[k])) next[k] = num(look[k], 0, k === 'speed' ? MAX_SPEED : 100);
+  if (Number.isFinite(look.comets)) next.comets = Math.round(num(look.comets, 1, MAX_COMETS));
   return next;
 }
 
@@ -322,6 +323,7 @@ const routes = {
     if (MOTIONS.includes(body.motion)) look.motion = body.motion;
     if (Array.isArray(body.palette) && body.palette.length && body.palette.every(isHex)) look.palette = body.palette.slice(0, 8);
     for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) look[k] = num(body[k], 0, k === 'speed' ? MAX_SPEED : 100);
+    if (body.comets !== undefined) look.comets = Math.round(num(body.comets, 1, MAX_COMETS));
     if (status === 'connected') takeControl();
     lastSolid = null;
     save();

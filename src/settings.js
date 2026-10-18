@@ -20,6 +20,7 @@ export const DEFAULTS = {
   brightness: 100,
   spread: 50,
   background: 0, // how bright the dark parts of effects like comet are
+  comets: 1, // comets in flight at once, for the comet motion
   desk: null, // the desk's own look ({ scene, motion, palette, … }), or null to share the case's
   flow: { case: 'up', desk: 'right', rig: 'up', together: false }, // together: one flow across every light
   gaps: { case: 100, desk: 100, rig: 100 }, // how much of the empty space between parts effects cross, in %

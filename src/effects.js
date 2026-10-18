@@ -48,6 +48,8 @@ const BREATHE_FLOOR = 0.08;   // breathing never goes fully dark
 const BACKDROP_MAX = 0.5;     // background glow at 100%, as a share of full brightness
 const TWINKLE_CHANCE = 0.35;  // share of LEDs that flash in each cycle
 const COMET_HEAD = 0.04;      // how sharply the comet's leading edge rises
+export const MAX_COMETS = 4;  // comets in flight at once (the look's `comets`, 1 by default)
+export const cometsOf = look => Math.max(1, Math.min(MAX_COMETS, Math.round(look.comets ?? 1)));
 const BUBBLES_AT_ONCE = 4;
 const FILL_EDGE = 0.12;       // how soft the edge of a fill is, as a share of the rig
 
@@ -127,14 +129,24 @@ export function renderFrame(leds, look, t, seed = 0) {
 
       case 'comet': {
         // The head sweeps from just before the start to just past the end, so each pass enters
-        // and leaves the rig fully.
+        // and leaves the rig fully. Each comet takes one cycle to cross; with several at once, a
+        // new one sets off every cycle / comets, and where they overlap the brighter one shows.
         const tail = 0.05 + spread * 0.45;
-        const pass = t / cycle, n = Math.floor(pass);
-        const head = (pass - n) * (1 + tail + COMET_HEAD) - COMET_HEAD;
-        const color = colors[n % colors.length];
+        const span = 1 + tail + COMET_HEAD;
+        const comets = cometsOf(look);
+        const launches = (t / cycle) * comets, last = Math.floor(launches);
+        const heads = [];
+        for (let m = last; m > last - comets; m--) {
+          heads.push({ head: ((launches - m) / comets) * span - COMET_HEAD, color: colors[((m % colors.length) + colors.length) % colors.length] });
+        }
         return leds.map(l => {
-          const d = head + l.p;
-          return shade(color, d < 0 ? Math.max(0, 1 + d / COMET_HEAD) : Math.max(0, 1 - d / tail) ** 2);
+          let best = 0, color = colors[0];
+          for (const h of heads) {
+            const d = h.head + l.p;
+            const k = d < 0 ? Math.max(0, 1 + d / COMET_HEAD) : Math.max(0, 1 - d / tail) ** 2;
+            if (k > best) { best = k; color = h.color; }
+          }
+          return shade(color, best);
         });
       }
 

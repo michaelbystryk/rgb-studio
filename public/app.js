@@ -311,7 +311,7 @@ function paintSwatch(node, look) {
   const duration = {
     flow: [2 * cycle], bounce: [cycle], breathe: [4 * cycle, cycle], twinkle: [2 * cycle],
     noise: [3 * cycle], bubbles: [3 * cycle], lightning: [3],
-  }[look.motion] || [cycle * look.palette.length];
+  }[look.motion] || [(cycle * look.palette.length) / (look.motion === 'comet' ? look.comets ?? 1 : 1)];
   node.style.animationDuration = duration.map(d => `${d.toFixed(2)}s`).join(', ');
   node.style.filter = look.motion === 'lightning' ? '' : look.motion === 'twinkle' ? `brightness(${0.6 * b}) contrast(1.4)` : `brightness(${b})`;
 }
@@ -406,7 +406,7 @@ $('#look-dlg form').addEventListener('submit', async e => {
 });
 
 // The selected look's card follows your fine-tuning; the others show each scene as it comes.
-const LOOK_KEYS = ['motion', 'palette', 'speed', 'brightness', 'spread', 'background'];
+const LOOK_KEYS = ['motion', 'palette', 'speed', 'brightness', 'spread', 'background', 'comets'];
 let scenesSig = '';
 function renderScenes() {
   const st = editing();
@@ -459,6 +459,9 @@ function renderTune() {
   showSpeed(st.speed);
   $('#brightness-val').textContent = `${st.brightness}%`;
   $('#background-field').style.display = state.backdropMotions.includes(st.motion) ? '' : 'none';
+  $('#comets-field').style.display = st.motion === 'comet' ? '' : 'none';
+  $('#comets').replaceChildren(...[1, 2, 3, 4].map(n =>
+    el('button', { class: n === (st.comets ?? 1) ? 'active' : '', onclick: () => sendLook({ comets: n }) }, String(n))));
   showBackground(st.background);
   const [label, hint] = SPREAD_TEXT[st.motion] || SPREAD_TEXT.default;
   $('#spread-label').textContent = label;

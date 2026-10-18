@@ -212,20 +212,19 @@ function lightEditor(l) {
   kids.push(el('div', { class: 'side-actions' },
     !l.hidden && el('button', { class: 'ghost small', onclick: () => identify(l) }, 'Identify'),
     !l.hidden && l.shape === 'ring' && el('button', { class: 'ghost small', title: 'Light the first LED of this fan on your PC and here, to line them up', onclick: () => showStart(l) }, 'Show first LED'),
-    !l.hidden && l.shape !== 'matrix' && reverseButton(l),
+    ...(!l.hidden && l.shape !== 'matrix' ? reverseButtons(l) : []),
     el('button', { class: 'ghost small', onclick: () => patchLight(l.key, { hidden: !l.hidden }) }, l.hidden ? 'It is connected' : 'Nothing connected'),
     el('button', { class: 'link', onclick: () => tryPost('/api/light', { key: l.key, reset: true }) }, 'Reset')));
   return kids;
 }
 
-// Reversing a fan's LED order only swaps its left and right, so for fans the useful fix is to turn
-// its LED map upside down. Other parts get a plain reverse.
-function reverseButton(l) {
-  if (l.shape !== 'ring') {
-    return el('button', { class: 'ghost small' + (l.flip ? ' on' : ''), title: 'Colors running the wrong way on this part? Reverse its LED order.', onclick: () => patchLight(l.key, { flip: !l.flip }) }, 'Reverse');
-  }
+// Reverse flips which way the LEDs run. On a fan that only changes the direction around the ring,
+// so fans also get Upside down, which turns the whole ring of lights half a turn.
+function reverseButtons(l) {
+  const reverse = el('button', { class: 'ghost small' + (l.flip ? ' on' : ''), title: l.shape === 'ring' ? 'LEDs run the other way around on your fan? Reverse their direction.' : 'Colors running the wrong way on this part? Reverse its LED order.', onclick: () => patchLight(l.key, { flip: !l.flip }) }, 'Reverse');
+  if (l.shape !== 'ring') return [reverse];
   const upsideDown = Math.abs(Math.abs(l.angle) - 180) < 1;
-  return el('button', { class: 'ghost small' + (upsideDown ? ' on' : ''), title: 'Effects start from the wrong edge of this fan? Turn its lights upside down.', onclick: () => patchLight(l.key, { angle: ((l.angle + 180) % 360 + 540) % 360 - 180 }) }, 'Upside down');
+  return [reverse, el('button', { class: 'ghost small' + (upsideDown ? ' on' : ''), title: 'Effects start from the wrong edge of this fan? Turn its lights upside down.', onclick: () => patchLight(l.key, { angle: ((l.angle + 180) % 360 + 540) % 360 - 180 }) }, 'Upside down')];
 }
 
 function setMount(l, name) {

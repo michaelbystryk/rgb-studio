@@ -54,8 +54,8 @@ function fanSlots([L, H, W]) {
   };
 }
 
-// Where a headset floats, and how far apart its earcups are (matches the model in rig-view.js).
-const HEADSET_X = 20, HEADSET_GAP = 14.8;
+// Distance between the outsides of a headset's earcups (matches the model in rig-view.js).
+const HEADSET_WIDTH = 19;
 
 // The monitor's middle on the desk; desk lights and props are placed around it.
 const monitorX = rig => rig.desk.size[0] * 0.45;
@@ -74,11 +74,12 @@ function defaultLight(rig, d, z, ctx) {
       const k = next('mouseZone');
       return { ...desk, pos: [mx + 38, 3.8, DD * 0.62 - 2 + k * 4], body: k === 0 ? 'mouse' : null };
     }
-    // A headset floats left of the monitor, facing you: its first light on the front of the left
-    // earcup (where the model is drawn), the rest on the right one.
+    // A headset sits where your head is: in front of the desk at ear height, facing the monitor.
+    // Its first light is on the outside of the left earcup (where the model is drawn), the rest on
+    // the right one.
     if (d.type === 'headset') {
       const k = next('headsetZone');
-      return { ...desk, plane: 'xy', pos: [k === 0 ? HEADSET_X - HEADSET_GAP / 2 : HEADSET_X + HEADSET_GAP / 2, 24, DD * 0.35], body: k === 0 ? 'headset' : null };
+      return { ...desk, plane: 'yz', pos: [mx + (k === 0 ? -HEADSET_WIDTH : HEADSET_WIDTH) / 2, 30, DD + 16], body: k === 0 ? 'headset' : null };
     }
     if (d.type === 'monitor') {
       // Matched by zone name; anything unrecognized lines up along the back of the screen.

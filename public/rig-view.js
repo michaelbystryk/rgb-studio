@@ -35,6 +35,9 @@ const WASH_TEXTURE = (() => {
 const COLORS = { bg: '#07070d', panel: '#12121b', panelEdge: '#2c2c44', part: '#191924', partEdge: '#34344e', select: '#7b5cff', idle: '#15151c' };
 
 // Rotation from a light's own frame (u, v, w) into its area: see planeToArea in rig-geometry.js.
+// Distance between the outsides of a headset's earcups (matches HEADSET_WIDTH in src/rig.js).
+const HEADSET_WIDTH = 19;
+
 const PLANE_Q = {
   xy: new THREE.Quaternion(),
   xz: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2),
@@ -187,17 +190,18 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
       m.position.z = -1.1;
       g.add(m);
     } else if (light.body === 'headset') {
-      // Seen from the front: the light sits on the front of the left earcup, the band arcs over
-      // to the right one.
-      const gap = 14.8, cupR = 4.5, cupW = 3.2;
-      for (const u of [0, gap]) {
+      // Drawn from the light on the outside of the left earcup (facing sideways): the cups sit
+      // HEADSET_WIDTH apart along w, with the band arching over between them.
+      const cupR = 4.5, cupW = 3.2;
+      for (const w of [0.4 + cupW / 2, HEADSET_WIDTH - 0.4 - cupW / 2]) {
         const cup = new THREE.Mesh(new THREE.CylinderGeometry(cupR, cupR, cupW, 28), part);
-        cup.rotation.z = Math.PI / 2;
-        cup.position.set(u, 0, -cupR - 0.3);
+        cup.rotation.x = Math.PI / 2;
+        cup.position.set(0, 0, w);
         g.add(cup);
       }
-      const band = new THREE.Mesh(new THREE.TorusGeometry(gap / 2, 0.8, 10, 40, Math.PI), part);
-      band.position.set(gap / 2, cupR - 0.5, -cupR - 0.3);
+      const band = new THREE.Mesh(new THREE.TorusGeometry(HEADSET_WIDTH / 2 - 0.4 - cupW / 2, 0.8, 10, 40, Math.PI), part);
+      band.rotation.y = -Math.PI / 2;
+      band.position.set(0, cupR - 1, HEADSET_WIDTH / 2);
       g.add(band);
     } else if (light.body === 'mouse') {
       const m = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), part);
@@ -209,6 +213,7 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
   }
 
   const ledGeo = new THREE.SphereGeometry(0.45, 10, 8);
+  const STRIP_GEO = new THREE.BoxGeometry(0.7, 5.5, 0.5);
   function buildPiece(light, zone, builtIn) {
     const group = new THREE.Group();
     group.position.set(...light.pos);
@@ -220,7 +225,9 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
 
     const layout = ledLayout(light, light.count, zone.matrix);
     const keySize = light.shape === 'matrix' && zone.matrix ? (light.size / zone.matrix.width) * 0.78 : 0;
-    const geo = keySize ? new THREE.BoxGeometry(keySize, keySize, 0.4) : ledGeo;
+    // A headset's single light per earcup is a strip running up the side of the cup.
+    const strip = light.type === 'headset' && light.count === 1;
+    const geo = keySize ? new THREE.BoxGeometry(keySize, keySize, 0.4) : strip ? STRIP_GEO : ledGeo;
     const leds = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: '#ffffff' }), layout.length);
     const m4 = new THREE.Matrix4();
     layout.forEach(([u, v, w], i) => {

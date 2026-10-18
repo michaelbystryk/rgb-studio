@@ -32,7 +32,17 @@ The editor runs on Node.js:
 2. Run it and keep the default options. You can leave **Automatically install the necessary tools** unticked; RGB Studio doesn't need them.
 3. To check it worked, open a new Command Prompt or PowerShell window and run `node -v`. It should print `v20` or higher.
 
-Or, in PowerShell or Command Prompt: `winget install OpenJS.NodeJS.LTS`
+**Or install it from PowerShell.** Windows 10 and 11 include `winget`, so one command does it:
+
+```powershell
+winget install --id OpenJS.NodeJS.LTS --exact --accept-source-agreements --accept-package-agreements
+```
+
+Then open a new PowerShell window, so it picks up Node, and check:
+
+```powershell
+node -v
+```
 
 If `start.cmd` can't find Node right after installing, sign out of Windows and back in, then try again.
 

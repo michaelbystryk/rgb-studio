@@ -10,6 +10,24 @@ A simpler way to light up a PC with [OpenRGB](https://openrgb.org). Pick a look,
 - **Your setup in 3D:** your case, desk and monitor, lit live. Drag each light to where it really sits, move and turn the case, and pick which way colors travel: up, across, out from the center, or in a spiral around the case. Colors can travel across the whole rig together (rising from the case on the floor up through the desk and monitor, say) or separately for the case and the desk. Lights on the back of a monitor glow on the wall behind it.
 - **Save to PC:** a small tray player keeps your look playing, in sync, after the editor closes. Pick still colors for when you're not using it.
 
+## Why RGB Studio: it stays out of the way
+
+Most RGB apps keep a large program running all day to work out every frame. RGB Studio splits the job in two. The editor runs only while you're changing your look, and it quits about 15 seconds after you close its tab. Then a small tray player replays the recorded look. Each frame is worked out ahead of time, so the player only reads the next one and sends it to OpenRGB. There's no web engine, account, ads or internet connection; the only time it goes online is when you click **Check for updates**.
+
+Measured on the author's PC over 20 seconds while the player animated a look (Ryzen 9 7950X3D, 8 devices, 267 LEDs, 20 frames a second):
+
+| What's running | CPU | Memory |
+|---|---|---|
+| RGB Studio player | 0.02% of the PC (about 0.5% of one core) | 30 MB |
+| RGB Studio editor | Nothing once its tab is closed | Nothing once its tab is closed |
+
+Compared with the alternatives:
+
+- **[SignalRGB](https://signalrgb.com)** works out its effects live with a built-in web engine for as long as it runs. Users have reported [10–25% CPU from that engine](https://forum.signalrgb.com/t/high-cpu-usage-from-qtwebengine-signal/3132), [up to 47% in games](https://forum.signalrgb.com/t/insane-cpu-usage-while-in-game/3029), and [memory that keeps climbing](https://forum.signalrgb.com/t/signal-still-has-a-big-memory-leak-issue/8990), and its docs have a page on [memory leaks](https://docs.signalrgb.com/troubleshooting/common-issues/memory-leaks/). It supports far more devices and effects, so it's the bigger tool if you need those.
+- **[OpenRGB Effects Plugin](https://openrgb.org/plugins)** runs inside the OpenRGB app, so that app has to stay open (minimized is fine). OpenRGB 1.1's background service doesn't load plugins. Older reports describe [8–10% CPU while animating](https://gitlab.com/CalcProgrammer1/OpenRGB/-/work_items/2557) on some hardware, and [more at higher frame rates](https://gitlab.com/OpenRGBDevelopers/OpenRGBEffectPlugin/-/issues/19).
+
+These numbers come from different PCs and versions, so treat them as a rough guide, not a benchmark. Whichever app drives your lights, OpenRGB itself also does some work to send each frame to the devices, and that isn't counted in the table.
+
 ## Requirements
 
 - Windows 10 or 11, with [OpenRGB](https://openrgb.org) 0.9 or newer (see below).

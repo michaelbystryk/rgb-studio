@@ -58,7 +58,7 @@ To build the player, run `player\build.cmd`. It uses the C# compiler that comes 
 
 It's a full 3D editor of your setup: turn around it, zoom in, and drag any light to where it really sits.
 
-![Turning around the 3D view](docs/rig-orbit.gif)
+![The 3D view, live](docs/rig-3d.gif)
 
 | Do this | To |
 | --- | --- |

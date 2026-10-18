@@ -12,7 +12,7 @@ import { SCENES, MOTIONS, BACKDROP_MOTIONS, MAX_COMETS, renderFrame } from './sr
 import { isHex } from './src/color.js';
 import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
 import { FLOWS, MAX_SPEED, effectPositions, areaSize, areaToWorld, worldBox, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
-import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
+import { loadSettings, saveSettings, flushSettings, DEFAULTS } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
 import { writePlayer } from './src/player-export.js';
@@ -295,6 +295,36 @@ function cleanLook(look, current) {
   return next;
 }
 
+// Built-in device effects with their colors, speed and so on, so a saved look can put them back.
+function builtInSnapshot() {
+  return Object.fromEntries(Object.entries(settings.builtIn).map(([key, entry]) => {
+    const m = devices.find(d => keys[d.index] === key)?.modes[entry.mode];
+    return [key, m ? { mode: m.index, name: m.name, colors: [...(m.colors || [])], colorMode: m.colorMode, speed: m.speed, brightness: m.brightness, direction: m.direction } : entry];
+  }));
+}
+
+// Run the built-in effects a look saved; every other device goes back to the scene (takeControl).
+function applyBuiltIn(saved) {
+  const next = {};
+  for (const [key, entry] of Object.entries(saved)) {
+    if (!entry || !Number.isInteger(entry.mode)) continue;
+    const d = devices.find(x => keys[x.index] === key);
+    if (!d || status !== 'connected') { next[key] = { mode: entry.mode }; continue; }
+    const m = d.modes[entry.mode];
+    if (!m || (typeof entry.name === 'string' && entry.name !== m.name)) continue;
+    if (Number.isInteger(entry.colorMode)) m.colorMode = entry.colorMode;
+    if (Array.isArray(entry.colors) && entry.colors.length && entry.colors.every(isHex) && m.colorsMax > 0) m.colors = entry.colors.slice(0, m.colorsMax);
+    if (Number.isFinite(entry.speed) && (m.flags & MODE_FLAG.HAS_SPEED)) m.speed = num(entry.speed, Math.min(m.speedMin, m.speedMax), Math.max(m.speedMin, m.speedMax));
+    if (Number.isFinite(entry.brightness) && (m.flags & MODE_FLAG.HAS_BRIGHTNESS)) m.brightness = num(entry.brightness, m.brightnessMin, m.brightnessMax);
+    if (Number.isInteger(entry.direction)) m.direction = entry.direction;
+    next[key] = { mode: m.index };
+    client.updateMode(d.index, m);
+    d.activeMode = m.index;
+    delete frames[d.index];
+  }
+  settings.builtIn = next;
+}
+
 const requireConnected = () => { if (status !== 'connected') throw new Error('OpenRGB is not connected'); };
 const deviceAt = index => {
   requireConnected();
@@ -357,7 +387,7 @@ const routes = {
   'POST /api/looks': body => {
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, 40).trim() : '';
     if (!name) throw new Error('give the look a name');
-    const look = structuredClone(Object.fromEntries([...LOOK_KEYS, 'desk', 'flow', 'gaps'].map(k => [k, settings[k]])));
+    const look = structuredClone({ ...Object.fromEntries([...LOOK_KEYS, 'desk', 'flow', 'gaps'].map(k => [k, settings[k]])), builtIn: builtInSnapshot() });
     const index = settings.looks.findIndex(l => l.name.toLowerCase() === name.toLowerCase());
     const entry = { id: index < 0 ? crypto.randomUUID() : settings.looks[index].id, name, at: new Date().toISOString(), look };
     if (index < 0) settings.looks.push(entry);
@@ -367,20 +397,24 @@ const routes = {
     return { ok: true };
   },
 
-  // Switch the editor to a saved look, keeping the rig and device modes as they are.
+  // Switch the editor to a saved look, keeping the rig as it is. Anything the look doesn't record
+  // (it was saved before that setting existed) goes back to its default rather than staying as it
+  // was, so a look always comes back the same. Looks saved before Together existed were separate.
   'POST /api/looks/load': body => {
     const entry = settings.looks.find(l => l.id === body.id);
     if (!entry || !entry.look || typeof entry.look !== 'object' || Array.isArray(entry.look)) throw new Error('unknown look');
     const look = entry.look;
-    Object.assign(settings, cleanLook(look, settings));
-    if (look.desk === null) settings.desk = null;
-    else if (look.desk && typeof look.desk === 'object' && !Array.isArray(look.desk)) settings.desk = cleanLook(look.desk, settings.desk ?? settings);
-    if (typeof look.flow?.together === 'boolean') settings.flow.together = look.flow.together;
+    const base = Object.fromEntries(LOOK_KEYS.map(k => [k, DEFAULTS[k]]));
+    Object.assign(settings, cleanLook(look, base));
+    settings.desk = look.desk && typeof look.desk === 'object' && !Array.isArray(look.desk) ? cleanLook(look.desk, base) : null;
+    settings.flow = { ...settings.flow, together: look.flow?.together === true };
+    settings.gaps = { ...settings.gaps };
     for (const area of ['case', 'desk', 'rig']) {
       const direction = look.flow?.[area];
-      if (typeof direction === 'string' && Object.hasOwn(FLOWS[area], direction)) settings.flow[area] = direction;
-      if (Number.isFinite(look.gaps?.[area])) settings.gaps[area] = num(look.gaps[area], 0, 100);
+      settings.flow[area] = typeof direction === 'string' && Object.hasOwn(FLOWS[area], direction) ? direction : DEFAULTS.flow[area];
+      settings.gaps[area] = Number.isFinite(look.gaps?.[area]) ? num(look.gaps[area], 0, 100) : DEFAULTS.gaps[area];
     }
+    if (look.builtIn && typeof look.builtIn === 'object' && !Array.isArray(look.builtIn)) applyBuiltIn(look.builtIn);
     recomputeLayout();
     if (status === 'connected') takeControl();
     lastSolid = null;

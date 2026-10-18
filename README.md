@@ -26,7 +26,9 @@ Not using the service? Run OpenRGB as administrator and start its SDK server (th
 
 ## Run it
 
-Double-click `start.cmd`, or:
+Download the latest zip from [Releases](https://github.com/michaelbystryk/rgb-studio/releases), unzip it anywhere, and double-click `start.cmd`. The zip includes the tray player, built and ready.
+
+From a clone of this repo, double-click `start.cmd`, or:
 
 ```
 npm install
@@ -52,7 +54,7 @@ The editor draws your look live, so it stops when the editor closes. **Save to P
 
 ![Picking still colors](docs/still-colors.png)
 
-To build the player, run `player\build.cmd`. It uses the C# compiler that comes with Windows, so there's nothing to install. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
+In a clone, build the player with `player\build.cmd`. It uses the C# compiler that comes with Windows, so there's nothing to install. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
 
 ## The 3D view
 

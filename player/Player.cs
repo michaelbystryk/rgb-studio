@@ -655,13 +655,13 @@ namespace RgbStudioPlayer
             FollowSystemTheme();
             MenuItem open = new MenuItem("Open editor", delegate { OpenEditor(); });
             open.DefaultItem = true;
-            animated = new MenuItem("Animated look", delegate { SetMode(0); });
-            still = new MenuItem("Still colors", delegate { SetMode(1); });
+            animated = new MenuItem("Play saved look", delegate { SetMode(0); });
+            still = new MenuItem("Show still colors", delegate { SetMode(1); });
             animated.RadioCheck = still.RadioCheck = true;
             updates = new MenuItem("Check for updates", delegate { CheckForUpdates(); });
             startup = new MenuItem("Start with Windows", delegate { ToggleStartup(); });
             ContextMenu menu = new ContextMenu(new MenuItem[] {
-                open, new MenuItem("-"), animated, still, new MenuItem("-"), updates, startup, new MenuItem("Close", delegate { Quit(); }),
+                open, new MenuItem("-"), animated, still, new MenuItem("-"), updates, startup, new MenuItem("Exit", delegate { Quit(); }),
             });
             menu.Popup += delegate { startup.Checked = StartupOn(); };
             RefreshChecks();

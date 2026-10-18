@@ -29,7 +29,7 @@
 | `ledCount` | How many LEDs the device has. Every color update sends this many. |
 | `control` | Body of an `RGBCONTROLLER_UPDATEMODE` (1101) packet that puts the device into its per-LED mode, or `null` to leave the device alone (it runs its own built-in effect). Send it before colors, again after reconnecting, and after the device list changes. |
 | `tracks` | The animated look. Each track covers some of the device's LEDs (`leds`, LED indices) and holds `frames` frames starting at byte `offset` of `player.bin`. LEDs in no track stay black. |
-| `still` | The still colors, used for **Still colors** and when the player closes: `ledCount × 3` bytes, R G B per LED. |
+| `still` | The still colors, used for **Show still colors** and when the player exits: `ledCount × 3` bytes, R G B per LED. |
 
 ## `player.bin`
 

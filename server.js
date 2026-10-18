@@ -10,8 +10,9 @@ import { spawn } from 'node:child_process';
 import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
 import { SCENES, MOTIONS, BACKDROP_MOTIONS, MAX_COMETS, renderFrame } from './src/effects.js';
 import { isHex } from './src/color.js';
-import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
-import { FLOWS, MAX_SPEED, effectPositions, areaSize, areaToWorld, worldBox, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
+import { deviceKeys, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
+import { FLOWS, MAX_SPEED } from './shared/rig-geometry.js';
+import { layoutLeds } from './src/layout.js';
 import { loadSettings, saveSettings, flushSettings, DEFAULTS } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
@@ -24,7 +25,6 @@ const FPS = 20;
 const MAX_BACKLOG = 64 * 1024;   // bytes; above this OpenRGB is falling behind, so frames are skipped
 const SOLID_RESEND = 5;          // seconds between resends of a static look, in case a device reset
 const RECONNECT_DELAY = 3000;
-const DESK_EFFECT_HEIGHT = 50;  // cm of height above the desk that 3D effects span
 const IDLE_EXIT = 15_000;        // after the last page closes
 const FIRST_VISIT_EXIT = 60_000; // if no page ever connects
 const ROOT = import.meta.dirname;
@@ -101,48 +101,7 @@ function takeControl() {
 
 // Each LED's palette position comes from where its light sits in the rig.
 function recomputeLayout() {
-  lights = buildLights(devices, keys, settings.rig);
-  leds = devices.map(d => Array.from(d.leds, () => ({ p: 0, n: [0.5, 0.5, 0.5], area: 'case' })));
-  const placed = { case: [], desk: [] };
-  if (settings.flow.together) {
-    // One flow over every light, measured in the shared world so it can rise from the case up the monitor.
-    const spots = [];
-    for (const l of lights) {
-      if (l.hidden) continue;
-      const z = devices[l.device].zones[l.zone];
-      effectPositions(l, l.count, z.matrix).forEach((pos, i) => spots.push({ l, i, world: areaToWorld(settings.rig, l.area, pos) }));
-    }
-    if (spots.length) {
-      const { min, size } = worldBox(spots.map(s => s.world));
-      const dir = FLOWS.rig[settings.flow.rig];
-      const list = spots.map(({ l, i, world }) => {
-        const rel = world.map((v, k) => v - min[k]);
-        const led = { p: flowPosition(rel, size, dir), n: rel.map((v, k) => (size[k] ? v / size[k] : 0.5)), area: l.area };
-        led.face = [led.n[0] - 0.5, led.n[1] - 0.5]; // the whole rig seen from the front, so one radar or bubble spans it
-        leds[l.device][l.ledStart + i] = led;
-        return led;
-      });
-      squeezeGaps(list.map(led => led.p), settings.gaps.rig / 100).forEach((p, i) => { list[i].p = p; });
-    }
-    lastSolid = null;
-    return;
-  }
-  for (const l of lights) {
-    if (l.hidden) continue;
-    const z = devices[l.device].zones[l.zone];
-    const size = areaSize(settings.rig, l.area);
-    const box = l.area === 'desk' ? [size[0], DESK_EFFECT_HEIGHT, size[2]] : size;
-    const dir = FLOWS[l.area][settings.flow[l.area]];
-    effectPositions(l, l.count, z.matrix).forEach((pos, i) => {
-      const led = { p: flowPosition(pos, size, dir), n: pos.map((v, k) => v / box[k]), area: l.area };
-      if (dir === 'spiral') led.turn = spiralTurn(pos, size);
-      leds[l.device][l.ledStart + i] = led;
-      placed[l.area].push(led);
-    });
-  }
-  for (const [area, list] of Object.entries(placed)) {
-    squeezeGaps(list.map(led => led.p), settings.gaps[area] / 100).forEach((p, i) => { list[i].p = p; });
-  }
+  ({ lights, leds } = layoutLeds(devices, keys, settings));
   lastSolid = null;
 }
 

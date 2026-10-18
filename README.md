@@ -161,6 +161,7 @@ The format is described in [docs/rig-format.md](docs/rig-format.md).
 server.js              local web server, effect loop and API
 src/openrgb.js         OpenRGB SDK client (protocol 5, plus profiles and settings on 6; no dependencies)
 src/effects.js         scenes, and the renderer that turns LED positions into colors
+src/layout.js          where each LED sits for the effects: along the flow, around the radar, and on the view
 src/rig.js             default positions for each kind of device, and rig validation
 src/persist.js         stores still colors on devices and in the OpenRGB profile
 src/player-export.js   Save to PC: records each look as a seamless loop for the player
@@ -173,6 +174,7 @@ src/startup.js         sets the OpenRGB service's startup profile (over the SDK,
 shared/rig-geometry.js where each LED sits, shared by the server and the 3D view
 public/                the page, including the three.js rig view
 tools/probe.js         prints every device, zone and mode OpenRGB reports (npm run probe)
+tools/check-effects.js runs every motion with every flow setting on a sample rig and reports problems (npm run check)
 ```
 
 Settings and your layout are saved to `%APPDATA%\RGB Studio`.

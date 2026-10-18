@@ -77,8 +77,8 @@ function noise3(x, y, z) {
 const fbm = (x, y, z) => 0.6 * noise3(x, y, z) + 0.3 * noise3(2 * x, 2 * y, 2 * z) + 0.1 * noise3(4 * x, 4 * y, 4 * z);
 
 // An LED's position on the view people actually look at, centered on 0: the case from the side
-// (rear to front, bottom to top), the desk from above (left to right, back to front).
-const facing = l => l.face ?? (l.area === 'desk' ? [l.n[0] - 0.5, 0.5 - l.n[2]] : [l.n[0] - 0.5, l.n[1] - 0.5]);
+// (rear to front, bottom to top), the desk from above (left to right, front to back).
+export const facing = l => l.face ?? (l.area === 'desk' ? [l.n[0] - 0.5, 0.5 - l.n[2]] : [l.n[0] - 0.5, l.n[1] - 0.5]);
 
 // Colors for one device. Each LED is { p, n, area, turn? }: p is its position along the flow
 // (0 where the flow starts, about -1 where it ends; see flowPosition), n its position in its area
@@ -163,12 +163,13 @@ export function renderFrame(leds, look, t, seed = 0) {
 
       case 'beam': {
         // A beam turns around the middle of each area, leaving a fading trail like a radar screen.
+        // `spin` (see spinPosition) is where it reaches each LED, with the empty stretches shortened.
         const width = 0.1 + spread * 0.35;
         const turn = fract(t / cycle);
         const color = samplePalette(stops, t / (cycle * colors.length));
         return leds.map(l => {
           const [a, b] = facing(l);
-          const behind = fract(turn - Math.atan2(b, a) / (2 * Math.PI)); // 0 at the beam, growing behind it
+          const behind = fract(turn - (l.spin ?? Math.atan2(b, a) / (2 * Math.PI))); // 0 at the beam, growing behind it
           return shade(color, behind < width ? (1 - behind / width) ** 1.5 : 0);
         });
       }
@@ -180,13 +181,15 @@ export function renderFrame(leds, look, t, seed = 0) {
         const bubbles = Array.from({ length: BUBBLES_AT_ONCE }, (_, j) => {
           const life = t / cycle + j / BUBBLES_AT_ONCE;
           const id = Math.floor(life) * BUBBLES_AT_ONCE + j;
-          return { age: fract(life), center: [hash(id * 3) - 0.5, hash(id * 3 + 1) - 0.5], color: colors[Math.floor(hash(id * 7 + 5) * colors.length)] };
+          return { age: fract(life), center: [hash(id * 3) - 0.5, hash(id * 3 + 1) - 0.5], pick: hash(id * 11 + 2), color: colors[Math.floor(hash(id * 7 + 5) * colors.length)] };
         });
         return leds.map(l => {
           const [a, b] = facing(l);
           const out = [0, 0, 0];
           for (const bub of bubbles) {
-            const r = bub.age * radius, d = Math.hypot(a - bub.center[0], b - bub.center[1]);
+            // On a light (see anchors in layout.js), so no bubble grows unseen in empty space.
+            const center = l.anchors?.length ? l.anchors[Math.floor(bub.pick * l.anchors.length)] : bub.center;
+            const r = bub.age * radius, d = Math.hypot(a - center[0], b - center[1]);
             const k = (d < r ? 0.3 + 0.7 * (d / r) ** 4 : Math.max(0, 1 - (d - r) / rim)) * (1 - bub.age);
             for (let c = 0; c < 3; c++) out[c] = Math.max(out[c], bub.color[c] * k);
           }
@@ -195,7 +198,8 @@ export function renderFrame(leds, look, t, seed = 0) {
       }
 
       case 'lightning': {
-        // Each area gets its own storm: in every time slot a strike may land, flicker and fade.
+        // Each area gets its own storm, or the whole rig one when colors travel together: in every
+        // time slot a strike may land, flicker and fade.
         const slotLength = cycle / 2;
         const strikeIn = area => {
           const salt = area === 'desk' ? 977 : 0;
@@ -213,7 +217,10 @@ export function renderFrame(leds, look, t, seed = 0) {
         };
         const strikes = { case: strikeIn('case'), desk: strikeIn('desk') };
         // Strikes land where the flow starts, so the flash is brightest there.
-        return leds.map(l => shade(strikes[l.area].color, strikes[l.area].k * (0.6 + 0.4 * clamp01(1 + l.p))));
+        return leds.map(l => {
+          const s = l.face ? strikes.case : strikes[l.area];
+          return shade(s.color, s.k * (0.6 + 0.4 * clamp01(1 + l.p)));
+        });
       }
 
       case 'fill': {

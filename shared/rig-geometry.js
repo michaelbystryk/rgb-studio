@@ -166,7 +166,21 @@ export function flowPosition(pos, size, dir) {
   const n = pos.map((v, i) => (size[i] ? v / size[i] : 0.5));
   if (!dir) return -2 * Math.hypot(n[0] - 0.5, n[1] - 0.5, n[2] - 0.5);
   if (dir === 'spiral') return -(n[1] * SPIRAL_TURNS + spiralTurn(pos, size)) / (SPIRAL_TURNS + 1);
-  return -dir.reduce((sum, d, i) => sum + d * (d < 0 ? n[i] - 1 : n[i]), 0);
+  // Divided by the corner-to-corner distance along dir, so a diagonal also ends at -1.
+  return -dir.reduce((sum, d, i) => sum + d * (d < 0 ? n[i] - 1 : n[i]), 0) / dir.reduce((sum, d) => sum + Math.abs(d), 0);
+}
+
+// How far round a radar beam's turn an LED sits, 0..1 in the order the beam reaches it. `face` is
+// the LED on the view people look at, centered on 0 (across, up), and `dir` the flow direction in
+// that view. The beam starts pointing at the side the flow starts on and sweeps over the top to the
+// other side; up and down go round through the right. With no direction it starts pointing right
+// and turns counter-clockwise.
+export function spinPosition([a, b], dir) {
+  const [dx, dy] = dir || [0, 0];
+  const start = dx || dy ? Math.atan2(-dy, -dx) / (2 * Math.PI) : 0;
+  const sense = dx > 0 ? -1 : dx < 0 ? 1 : dy < 0 ? -1 : 1;
+  const s = sense * (Math.atan2(b, a) / (2 * Math.PI) - start);
+  return s - Math.floor(s);
 }
 
 // One full palette cycle takes 20 s at speed 0, 1.5 s at 100 and about 0.5 s at MAX_SPEED, on an

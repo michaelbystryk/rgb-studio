@@ -15,7 +15,8 @@
   },
   "scripts": {
     "start": "node server.js --open",
-    "probe": "node tools/probe.js"
+    "probe": "node tools/probe.js",
+    "check": "node tools/check-effects.js"
   },
   "dependencies": {
     "three": "^0.169.0"

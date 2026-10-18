@@ -15,8 +15,9 @@ import { cycleSeconds } from '../shared/rig-geometry.js';
 //   lightning — sudden flashes that flicker and fade over a dark rig
 //   fill      — the rig fills up with a color in the flow direction, empties, then the next color
 export const MOTIONS = ['still', 'flow', 'bounce', 'breathe', 'twinkle', 'comet', 'noise', 'beam', 'bubbles', 'lightning', 'fill'];
-// Motions that leave parts of the rig dark; the look's `background` fills those parts with a dim gradient.
-export const BACKDROP_MOTIONS = ['twinkle', 'comet', 'beam', 'bubbles', 'lightning', 'fill'];
+// Motions whose dark parts (or dark palette colors) the look's `background` can fill with a dim
+// gradient: every one that moves.
+export const BACKDROP_MOTIONS = MOTIONS.filter(m => m !== 'still');
 
 // Every palette color keeps at least one channel near zero: mixes of all three read as white on LEDs.
 export const SCENES = {

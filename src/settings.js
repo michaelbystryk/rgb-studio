@@ -16,8 +16,9 @@ export const DEFAULTS = {
   spread: 50,
   background: 0, // how bright the dark parts of effects like comet are
   desk: null, // the desk's own look ({ scene, motion, palette, … }), or null to share the case's
-  flow: { case: 'up', desk: 'right' },
-  gaps: { case: 100, desk: 100 }, // how much of the empty space between parts effects cross, in %
+  flow: { case: 'up', desk: 'right', rig: 'up', together: false }, // together: one flow across every light
+  gaps: { case: 100, desk: 100, rig: 100 }, // how much of the empty space between parts effects cross, in %
+  looks: [], // named looks to switch between in the editor
   rig: DEFAULT_RIG,
   builtIn: {}, // device key → { mode } for devices running their own hardware effect
   // The lights when you're not using them: the player's "Still colors", and what OpenRGB shows when
@@ -36,6 +37,9 @@ export function loadSettings() {
   const rig = { ...DEFAULT_RIG, ...stored.rig };
   return {
     ...DEFAULTS, ...stored,
+    looks: Array.isArray(stored.looks) ? stored.looks.filter(l =>
+      l && typeof l.id === 'string' && typeof l.name === 'string' && typeof l.at === 'string' &&
+      l.look && typeof l.look === 'object' && !Array.isArray(l.look)) : [],
     flow: { ...DEFAULTS.flow, ...stored.flow },
     gaps: { ...DEFAULTS.gaps, ...stored.gaps },
     still: { ...DEFAULTS.still, ...stored.still, colors: stillColors(stored.still?.colors) },

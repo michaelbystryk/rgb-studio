@@ -32,6 +32,7 @@ const MOTION_LABEL = { still: 'Still', flow: 'Flow', bounce: 'Bounce', breathe: 
 const FLOW_LABEL = {
   case: { up: 'Rising ↑', down: 'Falling ↓', front: 'Rear → front', rear: 'Front → rear', diagonal: 'Diagonal ↗', out: 'From center', spiral: 'Spiral ↻' },
   desk: { right: 'Left → right', left: 'Right → left', back: 'Toward monitor', front: 'Toward me', out: 'From center' },
+  rig: { up: 'Rising ↑', down: 'Falling ↓', right: 'Left → right', left: 'Right → left', back: 'Toward monitor', front: 'Toward me', out: 'From center' },
 };
 // Where a light can be mounted; each sets its plane and pins one coordinate.
 const MOUNTS = {
@@ -98,7 +99,7 @@ function identify(light) {
 function showStart(light) {
   if (state.devices[light.device]?.builtIn) return toast(`${light.label} is running a built-in effect. Switch it back to the scene first.`);
   tryPost('/api/identify', { key: light.key, start: true });
-  toast(`On your PC, “${light.label}” now shows its first LED in white, with pink after it. Turn its lights until the 3D view shows the same.`);
+  toast(`On your PC, “${light.label}” now shows its first LED in white, with pink after it. ${light.shape === 'ring' ? 'Turn its lights' : light.shape === 'matrix' ? 'Turn it' : 'Reverse or turn it'} until the 3D view shows the same.`);
 }
 
 function mountOf(light) {
@@ -203,16 +204,19 @@ function lightEditor(l) {
           el('option', { value: 1, selected: l.rings === 1 }, 'One face: a single ring of lights'),
           el('option', { value: 2, selected: l.rings === 2 }, 'Both faces: a ring on the front and the back'))));
     }
-    if (l.shape === 'ring' && l.plane === 'xz') {
+    if (l.plane === 'xz' && l.count > 1) {
+      const fan = l.shape === 'ring';
       kids.push(el('label', { class: 'side-field check' },
         el('input', { type: 'checkbox', checked: !!l.sweep, onchange: e => patchLight(l.key, { sweep: e.target.checked }) }),
-        'Sweep across the fan',
-        el('span', { class: 'hint' }, 'Rising effects light it from the glass side to the back, instead of the whole fan at once. Turn ° picks the edge it starts from.')));
+        fan ? 'Sweep across the fan' : 'Sweep across it',
+        el('span', { class: 'hint' }, fan
+          ? 'Rising effects light it from the glass side to the back, instead of the whole fan at once. Turn ° picks the edge it starts from.'
+          : `It lies flat, so rising effects would light it all at once. This sweeps them across it from ${l.area === 'desk' ? 'the edge nearest you to the far edge' : 'the glass side to the back'} instead.`)));
     }
   }
   kids.push(el('div', { class: 'side-actions' },
     !l.hidden && el('button', { class: 'ghost small', onclick: () => identify(l) }, 'Identify'),
-    !l.hidden && l.shape === 'ring' && el('button', { class: 'ghost small', title: 'Light the first LED of this fan on your PC and here, to line them up', onclick: () => showStart(l) }, 'Show first LED'),
+    !l.hidden && l.count > 1 && el('button', { class: 'ghost small', title: `Light the first LED of this ${l.shape === 'ring' ? 'fan' : 'part'} on your PC and here, to line them up`, onclick: () => showStart(l) }, 'Show first LED'),
     ...(!l.hidden && l.shape !== 'matrix' ? reverseButtons(l) : []),
     el('button', { class: 'ghost small', onclick: () => patchLight(l.key, { hidden: !l.hidden }) }, l.hidden ? 'It is connected' : 'Nothing connected'),
     el('button', { class: 'link', onclick: () => tryPost('/api/light', { key: l.key, reset: true }) }, 'Reset')));
@@ -358,6 +362,49 @@ function renderLookTarget() {
   $('#tune-area').replaceChildren(seg());
 }
 
+// Saved looks always hold both areas, whichever one is being edited.
+let looksSig = '';
+function renderLooks() {
+  const looks = state.looks ?? [];
+  const sig = JSON.stringify(looks);
+  if (sig === looksSig) return;
+  looksSig = sig;
+  $('#saved-looks').replaceChildren(...(looks.length ? looks.map(l =>
+    el('span', { class: 'seg saved-look' },
+      el('button', { title: `Load ${l.name}: ${l.split ? 'separate case and desk looks' : 'whole rig'}, ${l.flow?.together ? `flow together: ${l.flow.rig ?? '?'}` : `case flow ${l.flow?.case ?? '?'}, desk flow ${l.flow?.desk ?? '?'}`}`, onclick: () => tryPost('/api/looks/load', { id: l.id }) }, l.name),
+      el('button', { title: `Delete ${l.name}`, 'aria-label': `Delete ${l.name}`, onclick: () => confirm(`Delete “${l.name}”?`) && tryPost('/api/looks/delete', { id: l.id }) }, '×')))
+    : [el('span', { class: 'hint' }, 'Save a look to come back to it later.')]));
+}
+
+$('#save-look').addEventListener('click', () => {
+  $('#look-name').value = '';
+  $('#look-name').setCustomValidity('');
+  $('#look-dlg').showModal();
+});
+$('#look-name').addEventListener('input', e => e.target.setCustomValidity(''));
+$('#look-save').addEventListener('click', () => $('#look-name').setCustomValidity('')); // let a failed save be retried
+$('#look-cancel').addEventListener('click', () => $('#look-dlg').close());
+$('#look-dlg form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('#look-name').value.trim();
+  if (!name) {
+    $('#look-name').setCustomValidity('Give the look a name.');
+    return $('#look-name').reportValidity();
+  }
+  $('#look-save').disabled = true;
+  try {
+    await post('/api/looks', { name });
+    $('#look-dlg').close();
+    toast('Look saved');
+  } catch (e) {
+    // The toast sits behind the open dialog, so show the error on the name field.
+    $('#look-name').setCustomValidity(`Couldn’t save: ${e.message}`);
+    $('#look-name').reportValidity();
+  } finally {
+    $('#look-save').disabled = false;
+  }
+});
+
 // The selected look's card follows your fine-tuning; the others show each scene as it comes.
 const LOOK_KEYS = ['motion', 'palette', 'speed', 'brightness', 'spread', 'background'];
 let scenesSig = '';
@@ -449,8 +496,25 @@ function showGaps(area, v) {
   $(`#gaps-${area}-val`).textContent = v >= 100 ? 'as measured' : v ? `${v}% of the gaps` : 'gaps skipped';
 }
 
+// What was just picked, until the server's state catches up, so the switch doesn't flick back.
+let wantTogether = null;
+function isTogether() {
+  const together = !!state.settings.flow.together;
+  if (wantTogether === together) wantTogether = null;
+  return wantTogether ?? together;
+}
+
 function renderFlows() {
-  for (const area of ['case', 'desk']) {
+  const together = isTogether();
+  $('#flow-mode').replaceChildren(...[[true, 'Together'], [false, 'Separate']].map(([value, label]) =>
+    el('button', {
+      class: value === together ? 'active' : '',
+      title: value ? 'One flow across every light, in real space' : 'The case and the desk each have their own flow',
+      onclick: () => { wantTogether = value; tryPost('/api/flow', { together: value }); renderFlows(); },
+    }, label)));
+  $('#row-rig').hidden = !together;
+  $('#row-case').hidden = $('#row-desk').hidden = together;
+  for (const area of ['case', 'desk', 'rig']) {
     const gaps = $(`#gaps-${area}`);
     if (document.activeElement !== gaps) gaps.value = state.settings.gaps[area];
     showGaps(area, state.settings.gaps[area]);
@@ -638,6 +702,7 @@ $('#save-go').addEventListener('click', async () => {
 function render() {
   renderStatus();
   renderLookTarget();
+  renderLooks();
   renderScenes();
   renderTune();
   renderFlows();
@@ -646,7 +711,7 @@ function render() {
   view.setState(state);
 }
 
-for (const area of ['case', 'desk']) {
+for (const area of ['case', 'desk', 'rig']) {
   $(`#gaps-${area}`).addEventListener('input', e => {
     showGaps(area, +e.target.value);
     sendGaps({ area, gaps: +e.target.value });

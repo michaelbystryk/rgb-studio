@@ -65,14 +65,16 @@ export function ledPositions(light, count, matrix) {
   });
 }
 
-// Where effects treat each LED as being. Usually that is where it really is, but a fan lying flat
-// with `sweep` set is treated as tilted up to face the glass, standing on its own spot: its glass
-// side becomes its bottom, so effects that rise sweep across it instead of lighting it all at once.
+// Where effects treat each LED as being. Usually that is where it really is, but a light lying flat
+// (a fan on the case floor, a keyboard on the desk) with `sweep` set is treated as tilted up, standing
+// on its own spot: its glass side (on the desk, the side nearest you) becomes its bottom, so effects
+// that rise sweep across it instead of lighting it all at once.
 export function effectPositions(light, count, matrix) {
   const pos = ledPositions(light, count, matrix);
   if (!light.sweep || light.plane !== 'xz') return pos;
-  const [cx, cy, cz] = light.pos;
-  return pos.map(([x, y, z]) => [x, cy + light.size + (cz - z), cz + (y - cy)]);
+  const [, cy, cz] = light.pos;
+  const lift = light.shape === 'ring' ? light.size : Math.max(...pos.map(p => p[2])) - cz;
+  return pos.map(([x, y, z]) => [x, cy + lift + (cz - z), cz + (y - cy)]);
 }
 
 // Flow positions with the empty stretches between parts shortened, so effects spend their time on
@@ -124,12 +126,28 @@ export function areaFrames(rig) {
   };
 }
 
+// A point in an area's frame → the shared world, turned and placed exactly as the 3D view does
+// (x' = x·cos + z·sin, z' = -x·sin + z·cos about the vertical axis, then moved to the area's origin).
+export function areaToWorld(rig, area, [x, y, z]) {
+  const { origin, turn } = areaFrames(rig)[area], c = Math.cos(turn), s = Math.sin(turn);
+  return [origin[0] + x * c + z * s, origin[1] + y, origin[2] - x * s + z * c];
+}
+
+// Smallest box around world points: its corner and its size. Callers subtract `min` before flowPosition.
+export function worldBox(points) {
+  const min = [0, 1, 2].map(k => Math.min(...points.map(p => p[k])));
+  const max = [0, 1, 2].map(k => Math.max(...points.map(p => p[k])));
+  return { min, size: max.map((v, k) => v - min[k]) };
+}
+
 // Directions colors can travel in, as unit vectors in the area's frame. `null` means outward from
-// the center, and 'spiral' winds up around the case.
+// the center, and 'spiral' winds up around the case. `rig` is for all lights together, in the
+// shared world frame (the desk's axes, y up).
 const D = Math.SQRT1_2;
 export const FLOWS = {
   case: { up: [0, 1, 0], down: [0, -1, 0], front: [1, 0, 0], rear: [-1, 0, 0], diagonal: [D, D, 0], out: null, spiral: 'spiral' },
   desk: { right: [1, 0, 0], left: [-1, 0, 0], back: [0, 0, -1], front: [0, 0, 1], out: null },
+  rig: { up: [0, 1, 0], down: [0, -1, 0], right: [1, 0, 0], left: [-1, 0, 0], front: [0, 0, 1], back: [0, 0, -1], out: null },
 };
 
 const SPIRAL_TURNS = 2; // laps around the case from bottom to top

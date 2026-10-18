@@ -747,6 +747,19 @@ namespace RgbStudioPlayer
         void OpenEditor()
         {
             string exeDir = Path.GetDirectoryName(Application.ExecutablePath);
+            // The launcher runs the editor without a console window.
+            string launcher = Path.Combine(exeDir, "RGBStudio.exe");
+            if (File.Exists(launcher))
+            {
+                try
+                {
+                    ProcessStartInfo lp = new ProcessStartInfo(launcher);
+                    lp.WorkingDirectory = exeDir;
+                    Process.Start(lp);
+                    return;
+                }
+                catch (Exception e) { Log.Write("could not start launcher: " + e.Message); }
+            }
             string dir = null;
             DirectoryInfo parent = Directory.GetParent(exeDir);
             if (parent != null && File.Exists(Path.Combine(parent.FullName, "start.cmd"))) dir = parent.FullName;

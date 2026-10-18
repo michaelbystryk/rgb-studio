@@ -6,7 +6,8 @@ A simpler way to light up a PC with [OpenRGB](https://openrgb.org). Pick a look,
 
 - **Looks:** 21 ready-made scenes (Synthwave, Aurora, Lava Lamp, Storm, Comet, Matrix and more), each one editable: pick the motion, colors, speed, brightness, gradient width and how much the dark gaps glow. Give the desk its own look, or run one look across everything.
 - **Motions:** flow, bounce, breathe, twinkle, comet, drift, beam, bubbles, lightning and fill.
-- **Your setup in 3D:** your case, desk and monitor, lit live. Drag each light to where it really sits, move and turn the case, and pick which way colors travel: up, across, out from the center, or in a spiral around the case. Lights on the back of a monitor glow on the wall behind it.
+- **Saved looks:** name and save the case and desk looks together, including flow directions and empty space settings. Click a saved look to bring it back. Looks are switched in the editor, not from the tray.
+- **Your setup in 3D:** your case, desk and monitor, lit live. Drag each light to where it really sits, move and turn the case, and pick which way colors travel: up, across, out from the center, or in a spiral around the case. Colors can travel across the whole rig together (rising from the case on the floor up through the desk and monitor, say) or separately for the case and the desk. Lights on the back of a monitor glow on the wall behind it.
 - **Save to PC:** a small tray player keeps your look playing, in sync, after the editor closes. Pick still colors for when you're not using it.
 
 ## Requirements
@@ -59,7 +60,9 @@ npm start
 
 This opens http://127.0.0.1:6750 in your browser. RGB Studio only listens on your own PC.
 
-The editor closes by itself about 15 seconds after you close the tab. Run `node server.js --keep-alive` to keep it running.
+`start.cmd` runs the editor through `player\RGBStudio.exe`, so there's no console window. It shows up as "RGB Studio" with the logo in Task Manager, and ending it there ends the editor too. Its output goes to `%APPDATA%\RGB Studio\editor.log`. Without that exe, `start.cmd` falls back to a minimised `node` window.
+
+The editor closes by itself about 15 seconds after you close the tab. Run `node server.js --keep-alive` to keep it running (or `player\RGBStudio.exe --keep-alive`).
 
 ## Fine-tune a look
 
@@ -76,7 +79,7 @@ The editor draws your look live, so it stops when the editor closes. **Save to P
 
 ![Picking still colors](docs/still-colors.png)
 
-In a clone, build the player with `player\build.cmd`. It uses the C# compiler that comes with Windows, so there's nothing to install. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
+In a clone, build the player and the editor launcher (`RGBStudio.exe`) with `player\build.cmd`. It uses the C# compiler that comes with Windows, so there's nothing to install. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
 
 ## The 3D view
 
@@ -122,7 +125,8 @@ src/effects.js         scenes, and the renderer that turns LED positions into co
 src/rig.js             default positions for each kind of device, and rig validation
 src/persist.js         stores still colors on devices and in the OpenRGB profile
 src/player-export.js   Save to PC: records each look as a seamless loop for the player
-player/                the tray player (C#, built with player\build.cmd)
+player/                the tray player and the editor launcher (C#, built with player\build.cmd)
+tools/make-icon.js     draws public/favicon.ico, the logo used by the exes and the browser tab
 src/startup.js         sets the OpenRGB service's startup profile (over the SDK, or tools/set-startup-profile.js on older OpenRGB)
 shared/rig-geometry.js where each LED sits, shared by the server and the 3D view
 public/                the page, including the three.js rig view

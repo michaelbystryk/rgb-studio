@@ -5,12 +5,13 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
 import { SCENES, MOTIONS, BACKDROP_MOTIONS, renderFrame } from './src/effects.js';
 import { isHex } from './src/color.js';
 import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
-import { FLOWS, effectPositions, areaSize, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
+import { FLOWS, effectPositions, areaSize, areaToWorld, worldBox, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
 import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
@@ -69,6 +70,7 @@ function publicState() {
     flows: Object.fromEntries(Object.entries(FLOWS).map(([area, f]) => [area, Object.keys(f)])),
     placements: PLACEMENTS,
     settings,
+    looks: settings.looks.map(({ id, name, at, look }) => ({ id, name, at, split: !!look.desk, flow: look.flow })),
     rig: { ...settings.rig, props: settings.rig.props ?? defaultProps(settings.rig, devices) },
     lights,
     startup,
@@ -100,6 +102,28 @@ function recomputeLayout() {
   lights = buildLights(devices, keys, settings.rig);
   leds = devices.map(d => Array.from(d.leds, () => ({ p: 0, n: [0.5, 0.5, 0.5], area: 'case' })));
   const placed = { case: [], desk: [] };
+  if (settings.flow.together) {
+    // One flow over every light, measured in the shared world so it can rise from the case up the monitor.
+    const spots = [];
+    for (const l of lights) {
+      if (l.hidden) continue;
+      const z = devices[l.device].zones[l.zone];
+      effectPositions(l, l.count, z.matrix).forEach((pos, i) => spots.push({ l, i, world: areaToWorld(settings.rig, l.area, pos) }));
+    }
+    if (spots.length) {
+      const { min, size } = worldBox(spots.map(s => s.world));
+      const dir = FLOWS.rig[settings.flow.rig];
+      const list = spots.map(({ l, i, world }) => {
+        const rel = world.map((v, k) => v - min[k]);
+        const led = { p: flowPosition(rel, size, dir), n: rel.map((v, k) => (size[k] ? v / size[k] : 0.5)), area: l.area };
+        leds[l.device][l.ledStart + i] = led;
+        return led;
+      });
+      squeezeGaps(list.map(led => led.p), settings.gaps.rig / 100).forEach((p, i) => { list[i].p = p; });
+    }
+    lastSolid = null;
+    return;
+  }
   for (const l of lights) {
     if (l.hidden) continue;
     const z = devices[l.device].zones[l.zone];
@@ -256,6 +280,18 @@ const num = (v, lo, hi) => {
   if (!Number.isFinite(n)) throw new Error(`not a number: ${v}`);
   return Math.max(lo, Math.min(hi, n));
 };
+
+// Older or hand-edited saved looks can omit fields; keep the current value when one is invalid.
+function cleanLook(look, current) {
+  const next = structuredClone(Object.fromEntries(LOOK_KEYS.map(k => [k, current[k]])));
+  if (!look || typeof look !== 'object' || Array.isArray(look)) return next;
+  if (typeof look.scene === 'string' && Object.hasOwn(SCENES, look.scene)) next.scene = look.scene;
+  if (MOTIONS.includes(look.motion)) next.motion = look.motion;
+  if (Array.isArray(look.palette) && look.palette.length && look.palette.every(isHex)) next.palette = look.palette.slice(0, 8);
+  for (const k of ['speed', 'brightness', 'spread', 'background']) if (Number.isFinite(look[k])) next[k] = num(look[k], 0, 100);
+  return next;
+}
+
 const requireConnected = () => { if (status !== 'connected') throw new Error('OpenRGB is not connected'); };
 const deviceAt = index => {
   requireConnected();
@@ -289,13 +325,62 @@ const routes = {
   },
 
   'POST /api/flow': body => {
-    if (!FLOWS[body.area]) throw new Error('unknown area');
-    if (body.direction !== undefined) {
-      if (!(body.direction in FLOWS[body.area])) throw new Error('unknown flow direction');
-      settings.flow = { ...settings.flow, [body.area]: body.direction };
+    if (body.together !== undefined && typeof body.together !== 'boolean') throw new Error('together must be true or false');
+    const touchesArea = body.area !== undefined || body.together === undefined; // together alone needs no area
+    if (touchesArea) {
+      if (!FLOWS[body.area]) throw new Error('unknown area');
+      if (body.direction !== undefined && !(body.direction in FLOWS[body.area])) throw new Error('unknown flow direction');
     }
-    if (body.gaps !== undefined) settings.gaps = { ...settings.gaps, [body.area]: num(body.gaps, 0, 100) };
+    if (body.together !== undefined) settings.flow = { ...settings.flow, together: body.together };
+    if (touchesArea && body.direction !== undefined) settings.flow = { ...settings.flow, [body.area]: body.direction };
+    if (touchesArea && body.gaps !== undefined) settings.gaps = { ...settings.gaps, [body.area]: num(body.gaps, 0, 100) };
     return layoutChanged();
+  },
+
+  // Save both areas and their flow settings. Reusing a name replaces that look in place.
+  'POST /api/looks': body => {
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, 40).trim() : '';
+    if (!name) throw new Error('give the look a name');
+    const look = structuredClone(Object.fromEntries([...LOOK_KEYS, 'desk', 'flow', 'gaps'].map(k => [k, settings[k]])));
+    const index = settings.looks.findIndex(l => l.name.toLowerCase() === name.toLowerCase());
+    const entry = { id: index < 0 ? crypto.randomUUID() : settings.looks[index].id, name, at: new Date().toISOString(), look };
+    if (index < 0) settings.looks.push(entry);
+    else settings.looks[index] = entry;
+    save();
+    pushState();
+    return { ok: true };
+  },
+
+  // Switch the editor to a saved look, keeping the rig and device modes as they are.
+  'POST /api/looks/load': body => {
+    const entry = settings.looks.find(l => l.id === body.id);
+    if (!entry || !entry.look || typeof entry.look !== 'object' || Array.isArray(entry.look)) throw new Error('unknown look');
+    const look = entry.look;
+    Object.assign(settings, cleanLook(look, settings));
+    if (look.desk === null) settings.desk = null;
+    else if (look.desk && typeof look.desk === 'object' && !Array.isArray(look.desk)) settings.desk = cleanLook(look.desk, settings.desk ?? settings);
+    if (typeof look.flow?.together === 'boolean') settings.flow.together = look.flow.together;
+    for (const area of ['case', 'desk', 'rig']) {
+      const direction = look.flow?.[area];
+      if (typeof direction === 'string' && Object.hasOwn(FLOWS[area], direction)) settings.flow[area] = direction;
+      if (Number.isFinite(look.gaps?.[area])) settings.gaps[area] = num(look.gaps[area], 0, 100);
+    }
+    recomputeLayout();
+    if (status === 'connected') takeControl();
+    lastSolid = null;
+    save();
+    pushState();
+    return { ok: true };
+  },
+
+  // Remove a saved look without changing the one showing in the editor.
+  'POST /api/looks/delete': body => {
+    const index = settings.looks.findIndex(l => l.id === body.id);
+    if (index < 0) throw new Error('unknown look');
+    settings.looks.splice(index, 1);
+    save();
+    pushState();
+    return { ok: true };
   },
 
   // Hand a device back to the scene, or give it a built-in hardware effect.
@@ -426,7 +511,7 @@ const routes = {
 
 // ---- HTTP ------------------------------------------------------------------------------------
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.md': 'text/markdown; charset=utf-8', '.png': 'image/png' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.md': 'text/markdown; charset=utf-8', '.png': 'image/png', '.ico': 'image/x-icon' };
 const ALLOWED_HOSTS = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`]);
 
 // Only this page may drive the API: blocks other websites (CSRF) and DNS-rebinding tricks.

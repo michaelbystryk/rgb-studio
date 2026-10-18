@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RGB Studio</title>
+  <link rel="icon" href="/favicon.ico">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
     { "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
@@ -34,9 +35,12 @@
         <aside id="side" class="side"></aside>
       </div>
       <div class="flows">
-        <div class="flow-row"><span>Case flow</span><div id="flow-case" class="seg"></div>
+        <div class="flow-row flow-mode"><span>Colors travel</span><div id="flow-mode" class="seg"></div></div>
+        <div class="flow-row" id="row-rig" hidden><span>Rig flow</span><div id="flow-rig" class="seg"></div>
+          <label class="gap-field" title="How long effects take to cross empty space between parts. Lower it to jump the gaps faster.">Empty space <input type="range" id="gaps-rig" min="0" max="100"> <em id="gaps-rig-val"></em></label></div>
+        <div class="flow-row" id="row-case"><span>Case flow</span><div id="flow-case" class="seg"></div>
           <label class="gap-field" title="How long effects take to cross empty space between parts. Lower it to jump the gaps faster.">Empty space <input type="range" id="gaps-case" min="0" max="100"> <em id="gaps-case-val"></em></label></div>
-        <div class="flow-row"><span>Desk flow</span><div id="flow-desk" class="seg"></div>
+        <div class="flow-row" id="row-desk"><span>Desk flow</span><div id="flow-desk" class="seg"></div>
           <label class="gap-field" title="How long effects take to cross empty space between parts. Lower it to jump the gaps faster.">Empty space <input type="range" id="gaps-desk" min="0" max="100"> <em id="gaps-desk-val"></em></label></div>
       </div>
     </section>
@@ -44,6 +48,11 @@
     <section>
       <h2 id="look-title">1 · Pick a look</h2>
       <div class="look-target"><div id="look-area"></div><p class="hint" id="look-hint"></p></div>
+      <div class="saved-looks">
+        <span>Saved looks</span>
+        <button id="save-look" class="ghost small">Save look…</button>
+        <div id="saved-looks" class="saved-list"></div>
+      </div>
       <div id="scenes" class="scenes"></div>
     </section>
 
@@ -93,6 +102,18 @@
       <div class="dlg-actions">
         <button value="cancel" class="ghost">Cancel</button>
         <button id="hw-apply" value="apply" class="primary">Apply</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="look-dlg" aria-labelledby="look-dlg-title">
+    <form method="dialog" class="dlg">
+      <h3 id="look-dlg-title">Save look</h3>
+      <p class="hint">Saves everything about the look: Whole rig or separate case and desk looks, how colors travel (together or separately) and Empty space. Use the same name to replace a saved look.</p>
+      <label class="field">Name <input id="look-name" type="text" maxlength="40" required autocomplete="off" autofocus></label>
+      <div class="dlg-actions">
+        <button id="look-cancel" type="button" class="ghost">Cancel</button>
+        <button id="look-save" value="save" class="primary">Save</button>
       </div>
     </form>
   </dialog>

@@ -34,7 +34,7 @@ The editor runs on Node.js:
 
 Or, in PowerShell or Command Prompt: `winget install OpenJS.NodeJS.LTS`
 
-If `start.cmd` says `node` isn't recognized right after installing, sign out of Windows and back in, then try again.
+If `start.cmd` can't find Node right after installing, sign out of Windows and back in, then try again.
 
 ## Run it
 

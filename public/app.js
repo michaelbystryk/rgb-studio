@@ -320,12 +320,28 @@ function renderStatus() {
   $('#save').disabled = state.status !== 'connected';
 }
 
+// The desk can have its own look. `editArea` is the one the scene cards and fine-tuning change.
+let editArea = 'case';
+const editing = () => (editArea === 'desk' && state.settings.desk ? state.settings.desk : state.settings);
+const sendLook = body => tryPost('/api/scene', { ...body, area: editArea });
+
+function renderLookTarget() {
+  const own = !!state.settings.desk;
+  if (!own) editArea = 'case';
+  $('#look-hint').textContent = !own ? 'Applies to every device at once, perfectly in sync.'
+    : editArea === 'desk' ? 'Changing the desk’s look: keyboard, mouse and monitor.' : 'Changing the case’s look: fans, RAM and motherboard.';
+  const pick = area => el('button', { class: editArea === area ? 'active' : '', onclick: () => { editArea = area; render(); } }, area === 'case' ? 'Case' : 'Desk');
+  $('#look-area').replaceChildren(...(own
+    ? [el('div', { class: 'seg' }, pick('case'), pick('desk')), el('button', { class: 'link', onclick: () => tryPost('/api/scene', { own: false }) }, 'Use one look for everything')]
+    : [el('button', { class: 'ghost small', onclick: () => { editArea = 'desk'; sendLook({ own: true }); } }, 'Give the desk its own look')]));
+}
+
 // The selected look's card follows your fine-tuning; the others show each scene as it comes.
 const LOOK_KEYS = ['motion', 'palette', 'speed', 'brightness', 'spread', 'background'];
 let scenesSig = '';
 function renderScenes() {
-  const st = state.settings;
-  const sig = JSON.stringify([Object.keys(state.scenes), st.scene, LOOK_KEYS.map(k => st[k])]);
+  const st = editing();
+  const sig = JSON.stringify([Object.keys(state.scenes), editArea, st.scene, LOOK_KEYS.map(k => st[k])]);
   if (sig === scenesSig) return;
   scenesSig = sig;
   $('#scenes').replaceChildren(...Object.entries(state.scenes).map(([key, s]) => {
@@ -333,7 +349,7 @@ function renderScenes() {
     const look = active ? Object.fromEntries(LOOK_KEYS.map(k => [k, st[k]])) : s;
     const sw = el('div', { class: 'swatch' });
     paintSwatch(sw, look);
-    return el('button', { class: 'scene' + (active ? ' active' : ''), onclick: () => tryPost('/api/scene', { scene: key }) },
+    return el('button', { class: 'scene' + (active ? ' active' : ''), onclick: () => sendLook({ scene: key }) },
       sw, el('div', { class: 'name' }, s.label), el('div', { class: 'kind' }, MOTION_LABEL[look.motion]));
   }));
 }
@@ -362,10 +378,10 @@ const PALETTE_HINT = {
 let shownPalette = '';
 let previewBar = null;
 function renderTune() {
-  const st = state.settings;
+  const st = editing();
   const moving = st.motion !== 'still';
   $('#motion').replaceChildren(...state.motions.map(m =>
-    el('button', { class: m === st.motion ? 'active' : '', onclick: () => tryPost('/api/scene', { motion: m }) }, MOTION_LABEL[m])));
+    el('button', { class: m === st.motion ? 'active' : '', onclick: () => sendLook({ motion: m }) }, MOTION_LABEL[m])));
   $('#speed-field').classList.toggle('disabled', !moving);
   for (const k of ['speed', 'brightness', 'spread', 'background']) {
     const input = $('#' + k);
@@ -382,15 +398,15 @@ function renderTune() {
 
   const look = Object.fromEntries(LOOK_KEYS.map(k => [k, st[k]]));
   if (previewBar && document.activeElement?.type !== 'color') paintSwatch(previewBar, look);
-  const sig = JSON.stringify([st.palette, st.motion, st.scene]);
+  const sig = JSON.stringify([editArea, st.palette, st.motion, st.scene]);
   if (sig === shownPalette || document.activeElement?.type === 'color') return;
   shownPalette = sig;
   const pal = [...st.palette];
   const bar = previewBar = el('div', { class: 'preview-bar' });
   const paint = () => paintSwatch(bar, { ...look, palette: pal });
-  const resend = () => { shownPalette = ''; tryPost('/api/scene', { palette: pal }); };
+  const resend = () => { shownPalette = ''; sendLook({ palette: pal }); };
   const stops = pal.map((c, i) => el('div', { class: 'stop' },
-    el('input', { type: 'color', value: c, oninput: e => { pal[i] = e.target.value; paint(); sendScene({ palette: pal }); } }),
+    el('input', { type: 'color', value: c, oninput: e => { pal[i] = e.target.value; paint(); sendScene({ palette: pal, area: editArea }); } }),
     pal.length > 1 ? el('button', { class: 'rm', title: 'Remove color', onclick: () => { pal.splice(i, 1); resend(); } }, '×') : null));
   const add = pal.length < 8 ? el('button', { class: 'add-stop', title: 'Add color', onclick: () => { pal.push(pal.at(-1)); resend(); } }, '+') : null;
   paint();
@@ -402,7 +418,7 @@ function showBackground(v) {
 }
 
 function showSpeed(speed) {
-  const text = SPEED_TEXT[state.settings.motion];
+  const text = SPEED_TEXT[editing().motion];
   $('#speed-val').textContent = text ? `${text} ${cycleSeconds(speed).toFixed(1)}s` : '';
 }
 
@@ -560,6 +576,7 @@ $('#save-go').addEventListener('click', async () => {
 
 function render() {
   renderStatus();
+  renderLookTarget();
   renderScenes();
   renderTune();
   renderFlows();
@@ -578,11 +595,11 @@ for (const area of ['case', 'desk']) {
 for (const k of ['speed', 'brightness', 'spread', 'background']) {
   $('#' + k).addEventListener('input', e => {
     const v = +e.target.value;
-    state.settings[k] = v;
+    editing()[k] = v;
     if (k === 'speed') showSpeed(v);
     if (k === 'brightness') $('#brightness-val').textContent = `${v}%`;
     if (k === 'background') showBackground(v);
-    sendScene({ [k]: v });
+    sendScene({ [k]: v, area: editArea });
   });
 }
 $('#rescan').addEventListener('click', () => tryPost('/api/rescan'));

@@ -4,7 +4,7 @@ A simpler way to light up a PC with [OpenRGB](https://openrgb.org). Pick a look,
 
 ![RGB Studio](docs/screenshot.png)
 
-- **Looks:** 21 ready-made scenes (Synthwave, Aurora, Lava Lamp, Storm, Comet, Matrix and more), each one editable: pick the motion, colors, speed, brightness, gradient width and how much the dark gaps glow.
+- **Looks:** 21 ready-made scenes (Synthwave, Aurora, Lava Lamp, Storm, Comet, Matrix and more), each one editable: pick the motion, colors, speed, brightness, gradient width and how much the dark gaps glow. Give the desk its own look, or run one look across everything.
 - **Motions:** flow, bounce, breathe, twinkle, comet, drift, beam, bubbles, lightning and fill.
 - **Your setup in 3D:** your case, desk and monitor, lit live. Drag each light to where it really sits, move and turn the case, and pick which way colors travel: up, across, out from the center, or in a spiral around the case. Lights on the back of a monitor glow on the wall behind it.
 - **Save to PC:** keeps your look after RGB Studio closes, without leaving anything running.

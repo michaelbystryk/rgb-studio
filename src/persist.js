@@ -90,13 +90,14 @@ function stillMode(d, frame, visible) {
 const storedOn = m => (has(m, MODE_FLAG.MANUAL_SAVE) || has(m, MODE_FLAG.AUTOMATIC_SAVE) ? 'device' : 'profile');
 
 // devices: OpenRGB controllers; frames: current colors per device index; lights: built rig lights.
-export async function saveToPc(client, { devices, frames, lights, look, style, isBuiltIn }) {
+export async function saveToPc(client, { devices, frames, lights, lookFor, style, isBuiltIn }) {
   const results = [];
   for (const d of devices) {
     const frame = frames[d.index] || d.colors;
     const mine = lights.filter(l => l.device === d.index);
     const visible = mine.filter(l => !l.hidden).flatMap(l => Array.from({ length: l.count }, (_, i) => l.ledStart + i));
     const area = mine.find(l => !l.hidden)?.area || 'case';
+    const look = lookFor(area);
 
     if (isBuiltIn(d)) {
       const m = d.modes[d.activeMode];

@@ -139,20 +139,38 @@ function maskHidden(d, colors) {
   return colors;
 }
 
+// The look for an area. The desk can have its own; otherwise it shares the case's.
+const LOOK_KEYS = ['scene', 'motion', 'palette', 'speed', 'brightness', 'spread', 'background'];
+const lookFor = area => (area === 'desk' && settings.desk ? { ...settings, ...settings.desk } : settings);
+
+function renderDevice(i, t) {
+  if (!settings.desk) return renderFrame(leds[i], settings, t, i);
+  const out = new Array(leds[i].length);
+  for (const area of ['case', 'desk']) {
+    const idx = [];
+    leds[i].forEach((led, k) => { if (led.area === area) idx.push(k); });
+    if (!idx.length) continue;
+    const colors = renderFrame(idx.map(k => leds[i][k]), lookFor(area), t, i);
+    idx.forEach((k, j) => { out[k] = colors[j]; });
+  }
+  return out;
+}
+
 let lastSolid = null;
 let lastSolidAt = 0;
 function tick() {
   if (status !== 'connected' || paused) return;
   const t = Date.now() / 1000;
   // Static looks only need sending once (and now and then, in case a device reset).
-  const solidKey = settings.motion === 'still' && !identify ? JSON.stringify([settings.palette, settings.brightness, settings.spread]) : null;
+  const looks = settings.desk ? [settings, lookFor('desk')] : [settings];
+  const solidKey = looks.every(l => l.motion === 'still') && !identify ? JSON.stringify(looks.map(l => [l.palette, l.brightness, l.spread])) : null;
   const send = !solidKey || solidKey !== lastSolid || t - lastSolidAt > SOLID_RESEND;
   // Don't pile up packets if OpenRGB is slow to drain them (SMBus RAM is slow).
   const backlogged = client.backlog > MAX_BACKLOG;
   const sentAll = send && !backlogged;
   devices.forEach((d, i) => {
     if (isBuiltIn(d) || !directModeOf(d)) return;
-    const colors = applyIdentify(d, maskHidden(d, renderFrame(leds[i], settings, t, i)), t);
+    const colors = applyIdentify(d, maskHidden(d, renderDevice(i, t)), t);
     frames[d.index] = colors;
     if (!send) return;
     if (backlogged) { stats.skipped++; return; }
@@ -222,13 +240,17 @@ const layoutChanged = () => { recomputeLayout(); save(); pushState(); return { o
 const routes = {
   'GET /api/state': () => publicState(),
 
-  // Pick a scene, or tweak the current look.
+  // Pick a scene, or tweak the current look. `area: 'desk'` edits the desk's own look (and gives
+  // the desk one, starting from the case's); `own: false` makes the desk share the case's again.
   'POST /api/scene': body => {
+    if (body.own === false) settings.desk = null;
+    else if (body.own === true || body.area === 'desk') settings.desk ??= Object.fromEntries(LOOK_KEYS.map(k => [k, structuredClone(settings[k])]));
+    const look = body.area === 'desk' ? settings.desk : settings;
     const scene = SCENES[body.scene];
-    if (scene) Object.assign(settings, { scene: body.scene, motion: scene.motion, palette: [...scene.palette], background: scene.background ?? 0 });
-    if (MOTIONS.includes(body.motion)) settings.motion = body.motion;
-    if (Array.isArray(body.palette) && body.palette.length && body.palette.every(isHex)) settings.palette = body.palette.slice(0, 8);
-    for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) settings[k] = num(body[k], 0, 100);
+    if (scene) Object.assign(look, { scene: body.scene, motion: scene.motion, palette: [...scene.palette], background: scene.background ?? 0 });
+    if (MOTIONS.includes(body.motion)) look.motion = body.motion;
+    if (Array.isArray(body.palette) && body.palette.length && body.palette.every(isHex)) look.palette = body.palette.slice(0, 8);
+    for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) look[k] = num(body[k], 0, 100);
     if (status === 'connected') takeControl();
     lastSolid = null;
     save();
@@ -328,7 +350,7 @@ const routes = {
     const style = body.style === 'still' ? 'still' : 'moving';
     paused = true;
     try {
-      const results = await saveToPc(client, { devices, frames, lights, look: settings, style, isBuiltIn });
+      const results = await saveToPc(client, { devices, frames, lights, lookFor, style, isBuiltIn });
       settings.saved = { at: new Date().toISOString(), style };
       save();
       startup = await startupStatus();

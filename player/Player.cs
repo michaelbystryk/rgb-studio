@@ -8,6 +8,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
@@ -614,7 +615,17 @@ namespace RgbStudioPlayer
 
         readonly NotifyIcon tray = new NotifyIcon();
         readonly Engine engine = new Engine();
-        ToolStripMenuItem animated, still, startup;
+        MenuItem animated, still, startup;
+
+        // Lets native menus follow the Windows dark/light setting, as other tray menus do. These
+        // uxtheme exports have no names, only ordinals; they exist on Windows 10 1903 and later.
+        [DllImport("uxtheme.dll", EntryPoint = "#135")] static extern int SetPreferredAppMode(int mode);
+        [DllImport("uxtheme.dll", EntryPoint = "#136")] static extern void FlushMenuThemes();
+        static void FollowSystemTheme()
+        {
+            try { SetPreferredAppMode(1); FlushMenuThemes(); } // 1 = allow dark
+            catch (Exception) { } // older Windows: light menus
+        }
         readonly System.Windows.Forms.Timer ui = new System.Windows.Forms.Timer();
         string shownStatus = "";
 
@@ -629,26 +640,23 @@ namespace RgbStudioPlayer
             catch (Exception) { }
             engine.Mode = mode == 1 ? 1 : 0;
 
-            ContextMenuStrip menu = new ContextMenuStrip();
-            ToolStripMenuItem title = new ToolStripMenuItem("RGB Studio");
-            title.Enabled = false;
-            title.Font = new Font(menu.Font, FontStyle.Bold);
-            menu.Items.Add(title);
-            menu.Items.Add("Open editor", null, delegate { OpenEditor(); });
-            menu.Items.Add(new ToolStripSeparator());
-            animated = new ToolStripMenuItem("Animated look", null, delegate { SetMode(0); });
-            still = new ToolStripMenuItem("Still colors", null, delegate { SetMode(1); });
-            menu.Items.Add(animated);
-            menu.Items.Add(still);
-            menu.Items.Add(new ToolStripSeparator());
-            startup = new ToolStripMenuItem("Start with Windows", null, delegate { ToggleStartup(); });
-            menu.Items.Add(startup);
-            menu.Items.Add("Close", null, delegate { Quit(); });
-            menu.Opening += delegate { startup.Checked = StartupOn(); };
+            // A native menu, so it looks like the other tray menus and stays sharp when scaled.
+            // The bold default item is what double-clicking the icon does.
+            FollowSystemTheme();
+            MenuItem open = new MenuItem("Open editor", delegate { OpenEditor(); });
+            open.DefaultItem = true;
+            animated = new MenuItem("Animated look", delegate { SetMode(0); });
+            still = new MenuItem("Still colors", delegate { SetMode(1); });
+            animated.RadioCheck = still.RadioCheck = true;
+            startup = new MenuItem("Start with Windows", delegate { ToggleStartup(); });
+            ContextMenu menu = new ContextMenu(new MenuItem[] {
+                open, new MenuItem("-"), animated, still, new MenuItem("-"), startup, new MenuItem("Close", delegate { Quit(); }),
+            });
+            menu.Popup += delegate { startup.Checked = StartupOn(); };
             RefreshChecks();
 
             tray.Icon = MakeIcon();
-            tray.ContextMenuStrip = menu;
+            tray.ContextMenu = menu;
             tray.DoubleClick += delegate { OpenEditor(); };
             tray.Text = "RGB Studio — waiting for OpenRGB";
             tray.Visible = true;
@@ -659,15 +667,17 @@ namespace RgbStudioPlayer
             engine.Start();
         }
 
+        // Drawn at the tray's own icon size (24 px at 150% scaling), so it isn't resampled.
         static Icon MakeIcon()
         {
-            using (Bitmap bmp = new Bitmap(32, 32))
+            int n = SystemInformation.SmallIconSize.Width;
+            using (Bitmap bmp = new Bitmap(n, n))
             {
                 using (Graphics g = Graphics.FromImage(bmp))
                 {
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    Rectangle r = new Rectangle(1, 1, 30, 30);
-                    int d = 12;
+                    Rectangle r = new Rectangle(0, 0, n - 1, n - 1);
+                    int d = Math.Max(4, n * 3 / 8);
                     using (GraphicsPath p = new GraphicsPath())
                     {
                         p.AddArc(r.X, r.Y, d, d, 180, 90);
@@ -675,7 +685,7 @@ namespace RgbStudioPlayer
                         p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
                         p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
                         p.CloseFigure();
-                        using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, 0, 32, 32),
+                        using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, 0, n, n),
                             ColorTranslator.FromHtml("#ff2bd6"), ColorTranslator.FromHtml("#4a6cff"), 45f))
                             g.FillPath(b, p);
                     }

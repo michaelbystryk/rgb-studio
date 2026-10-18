@@ -170,8 +170,9 @@ dialog::backdrop { background: rgba(0,0,0,.6); backdrop-filter: blur(3px); }
 .choice:has(input:checked) { border-color: var(--accent); background: rgba(123,92,255,.1); }
 .choice input { accent-color: var(--accent); margin-top: 4px; }
 .choice small { display: block; color: var(--muted); font-size: 13px; }
-.results { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
-.results small { display: block; color: var(--muted); font-size: 12px; }
+.still-colors { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+.still-colors input { width: 40px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.dlg h4 { margin: 8px 0 0; font-size: 14px; }
 .ok-note { margin: 0; color: var(--ok); font-size: 14px; }
 .bad-note { margin: 0; color: var(--bad); font-size: 14px; }
 textarea { width: 100%; background: #08080e; color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: 12px/1.45 ui-monospace, Consolas, monospace; resize: vertical; }

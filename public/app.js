@@ -548,9 +548,9 @@ $('#hw').addEventListener('close', () => {
 
 function startupNote(startup) {
   if (!startup.available) {
-    return el('p', { class: 'hint' }, 'OpenRGB is not installed as a Windows service here. To get this look back after a restart, open OpenRGB and load the “RGB Studio” profile, or pick it as OpenRGB’s startup profile in its settings.');
+    return el('p', { class: 'hint' }, 'OpenRGB is not installed as a Windows service here. To get your still colors back after a restart, open OpenRGB and load the “RGB Studio” profile, or pick it as OpenRGB’s startup profile in its settings.');
   }
-  if (startup.enabled) return el('p', { class: 'ok-note' }, '✓ OpenRGB loads this look when your PC starts and when it wakes from sleep.');
+  if (startup.enabled) return el('p', { class: 'ok-note' }, '✓ OpenRGB shows your still colors when your PC starts and when it wakes from sleep.');
   const btn = el('button', { type: 'button', class: 'ghost', onclick: async () => {
     btn.disabled = true;
     btn.textContent = 'Waiting for Windows…';
@@ -564,27 +564,48 @@ function startupNote(startup) {
     }
   } }, 'Load it when my PC starts');
   return el('div', { class: 'stack' },
-    el('p', { class: 'hint' }, 'Devices without their own memory get their colors from OpenRGB. Let OpenRGB load this look when your PC starts and wakes up? Windows asks for permission once.'),
+    el('p', { class: 'hint' }, 'Devices without their own memory get their colors from OpenRGB. Let OpenRGB show your still colors when your PC starts and wakes up? Windows asks for permission once.'),
     btn);
 }
 
+// The player is started from here; it waits while this page is open and takes over once it closes.
+function playerNote(player) {
+  if (!player.built) return el('p', { class: 'hint' }, 'The player isn’t built yet. Run player\\build.cmd in the RGB Studio folder, then save again.');
+  const btn = el('button', { type: 'button', class: 'ghost', onclick: async () => {
+    btn.disabled = true;
+    try {
+      await post('/api/player');
+      btn.replaceWith(el('p', { class: 'ok-note' }, '✓ The player is in your tray. It takes over when you close this page.'));
+    } catch (e) {
+      toast(e.message);
+      btn.disabled = false;
+    }
+  } }, 'Start the player');
+  return el('div', { class: 'stack' }, el('p', { class: 'hint' }, 'Already running? It picks up the new look by itself.'), btn);
+}
+
 $('#save').addEventListener('click', () => {
+  const { still, palette } = state.settings;
+  const deskPalette = state.settings.desk?.palette || palette;
+  $(`#save-dlg input[name=still][value=${still.mode}]`).checked = true;
+  $('#still-case').value = still.colors.case || palette[0];
+  $('#still-desk').value = still.colors.desk || deskPalette[0];
   $('#save-out').replaceChildren();
   $('#save-go').disabled = false;
   $('#save-dlg').showModal();
 });
+for (const id of ['#still-case', '#still-desk']) {
+  $(id).addEventListener('input', () => { $('#save-dlg input[name=still][value=custom]').checked = true; });
+}
 $('#save-go').addEventListener('click', async () => {
-  const style = new FormData($('#save-dlg form')).get('style');
+  const still = { mode: new FormData($('#save-dlg form')).get('still'), colors: { case: $('#still-case').value, desk: $('#still-desk').value } };
   $('#save-go').disabled = true;
   $('#save-out').replaceChildren(el('p', { class: 'hint' }, 'Saving…'));
   try {
-    const out = await post('/api/save', { style });
-    const rows = out.results.map(r => el('li', {},
-      el('b', {}, r.device.replace(/\s*\((Wired|Wireless)\)$/, '')), ` · ${r.mode}`,
-      el('small', {}, r.stored === 'device' ? 'stored on the device' : 'restored by OpenRGB', r.note ? ` · ${r.note}` : '')));
+    const out = await post('/api/save', { still });
     $('#save-out').replaceChildren(
-      el('p', { class: 'ok-note' }, `✓ Saved as the OpenRGB profile “${out.profile}”. Close this tab when you’re done and your PC switches to the saved look.`),
-      el('ul', { class: 'results' }, ...rows),
+      el('p', { class: 'ok-note' }, '✓ Saved. Your look is recorded for the player, and your still colors are stored in OpenRGB.'),
+      playerNote(out.player),
       startupNote(out.startup));
   } catch (e) {
     $('#save-out').replaceChildren(el('p', { class: 'bad-note' }, `Couldn’t save: ${e.message}`));

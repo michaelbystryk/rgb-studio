@@ -20,6 +20,9 @@ export const DEFAULTS = {
   gaps: { case: 100, desk: 100 }, // how much of the empty space between parts effects cross, in %
   rig: DEFAULT_RIG,
   builtIn: {}, // device key → { mode } for devices running their own hardware effect
+  // The lights when you're not using them: the player's "Still colors", and what OpenRGB shows when
+  // nothing is running. A color of null means the first color of that area's look.
+  still: { mode: 'custom', colors: { case: null, desk: null } },
   saved: null, // { at, style } after "Save to PC"
 };
 
@@ -35,6 +38,7 @@ export function loadSettings() {
     ...DEFAULTS, ...stored,
     flow: { ...DEFAULTS.flow, ...stored.flow },
     gaps: { ...DEFAULTS.gaps, ...stored.gaps },
+    still: { ...DEFAULTS.still, ...stored.still, colors: { ...DEFAULTS.still.colors, ...stored.still?.colors } },
     rig: { ...rig, case: { ...DEFAULT_RIG.case, ...rig.case }, desk: { ...DEFAULT_RIG.desk, ...rig.desk }, lights: { ...rig.lights } },
   };
 }

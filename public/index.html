@@ -100,12 +100,15 @@
   <dialog id="save-dlg">
     <form method="dialog" class="dlg">
       <h3>Save to PC</h3>
-      <p class="hint">Stores this look on your devices and in OpenRGB, so it stays when RGB Studio is closed.</p>
+      <p class="hint">Records your look for the RGB Studio player: a small app in your taskbar tray that keeps it playing, in sync, once this page is closed.</p>
+      <h4>When you’re not using it</h4>
+      <p class="hint">The player’s <b>Still colors</b>, and what your lights show after you close the player or while your PC starts.</p>
       <div class="choices">
-        <label class="choice"><input type="radio" name="style" value="moving" checked>
-          <span><b>Keep it moving</b><small>Each device runs its own built-in effect in your colors. They won't be in sync with each other.</small></span></label>
-        <label class="choice"><input type="radio" name="style" value="still">
-          <span><b>Still</b><small>Freezes the gradient exactly as it looks right now, across everything.</small></span></label>
+        <label class="choice"><input type="radio" name="still" value="custom">
+          <span><b>Colors I pick</b><small>One color for the case and one for the desk.</small>
+            <span class="still-colors">Case <input type="color" id="still-case"> Desk <input type="color" id="still-desk"></span></span></label>
+        <label class="choice"><input type="radio" name="still" value="snapshot">
+          <span><b>Snapshot</b><small>Freezes the look exactly as it is right now.</small></span></label>
       </div>
       <div id="save-out" class="stack"></div>
       <div class="dlg-actions">

@@ -246,11 +246,13 @@ export class OpenRGBClient extends EventEmitter {
 
   updateLeds(dev, colors) { this.send(dev, PKT.UPDATELEDS, withSize(new Writer().colors(colors).buffer())); }
 
-  modePacket(id, dev, mode) {
+  // The body of a mode packet; the background player sends it as is (see docs/player-format.md).
+  modeBody(mode) {
     const w = new Writer().i32(mode.index);
     writeMode(w, mode, this.protocol);
-    this.send(dev, id, withSize(w.buffer()));
+    return withSize(w.buffer());
   }
+  modePacket(id, dev, mode) { this.send(dev, id, this.modeBody(mode)); }
   updateMode(dev, mode) { this.modePacket(PKT.UPDATEMODE, dev, mode); }
   // Stores the mode in the device's own memory (for modes flagged MANUAL_SAVE).
   saveMode(dev, mode) { if (this.protocol >= 3) this.modePacket(PKT.SAVEMODE, dev, mode); }

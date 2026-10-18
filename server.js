@@ -14,6 +14,7 @@ import { FLOWS, effectPositions, areaSize, flowPosition, spiralTurn, squeezeGaps
 import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
+import { writePlayer } from './src/player-export.js';
 
 const PORT = 6750;
 const HOST = '127.0.0.1';
@@ -28,6 +29,7 @@ const ROOT = import.meta.dirname;
 const PUBLIC = path.join(ROOT, 'public');
 const SHARED = path.join(ROOT, 'shared');
 const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
+const PLAYER_EXE = path.join(ROOT, 'player', 'RGBStudioPlayer.exe');
 const args = new Set(process.argv.slice(2));
 
 const settings = loadSettings();
@@ -137,6 +139,23 @@ function applyIdentify(d, colors, t) {
 function maskHidden(d, colors) {
   for (const l of lights) if (l.device === d.index && l.hidden) colors.fill('#000000', l.ledStart, l.ledStart + l.count);
   return colors;
+}
+
+// The background player's tracks for a device: its visible LEDs, split by area when the areas
+// have their own looks (each loops on its own length).
+function playerGroups(d) {
+  const visible = lights.filter(l => l.device === d.index && !l.hidden).flatMap(l => Array.from({ length: l.count }, (_, i) => l.ledStart + i));
+  if (!settings.desk) return [{ indices: visible, look: settings }];
+  return ['case', 'desk'].map(area => ({ indices: visible.filter(i => leds[d.index][i].area === area), look: lookFor(area) }));
+}
+
+// What a device shows when you're not using it: your still colors, or the look as it is right now.
+const stillColor = area => settings.still.colors[area] || lookFor(area).palette[0];
+function stillFrame(d) {
+  if (settings.still.mode === 'snapshot') return [...(frames[d.index] || d.colors)];
+  const out = d.leds.map(() => '#000000');
+  for (const l of lights) if (l.device === d.index && !l.hidden) out.fill(stillColor(l.area), l.ledStart, l.ledStart + l.count);
+  return out;
 }
 
 // The look for an area. The desk can have its own; otherwise it shares the case's.
@@ -344,17 +363,26 @@ const routes = {
     return { ok: true };
   },
 
-  // Store the current look on the PC itself: in device memory where possible, and as an OpenRGB profile.
+  // Record the looks for the background player, and store the still colors on the PC itself (in
+  // device memory where possible, and as an OpenRGB profile) for when nothing is running.
   'POST /api/save': async body => {
     requireConnected();
-    const style = body.style === 'still' ? 'still' : 'moving';
+    if (body.still) {
+      const { mode, colors = {} } = body.still;
+      settings.still = {
+        mode: mode === 'snapshot' ? 'snapshot' : 'custom',
+        colors: Object.fromEntries(['case', 'desk'].map(a => [a, isHex(colors[a]) ? colors[a] : settings.still.colors[a]])),
+      };
+    }
+    const player = writePlayer({ devices, groups: playerGroups, render: (d, t) => maskHidden(d, renderDevice(d.index, t)), control: d => (isBuiltIn(d) || !directModeOf(d) ? null : client.modeBody(directModeOf(d))), still: stillFrame });
+    const stillFrames = Object.fromEntries(devices.map(d => [d.index, stillFrame(d)]));
     paused = true;
     try {
-      const results = await saveToPc(client, { devices, frames, lights, lookFor, style, isBuiltIn });
-      settings.saved = { at: new Date().toISOString(), style };
+      const results = await saveToPc(client, { devices, frames: stillFrames, lights, lookFor, style: 'still', isBuiltIn });
+      settings.saved = { at: new Date().toISOString(), style: 'player' };
       save();
       startup = await startupStatus();
-      return { ok: true, profile: PROFILE, results, startup };
+      return { ok: true, profile: PROFILE, results, startup, player: { ...player, built: fs.existsSync(PLAYER_EXE) } };
     } finally {
       // OpenRGB writes the profile on a background thread, so give it a moment before taking the
       // devices back. Live control resumes; the saved profile is restored when RGB Studio exits.
@@ -366,6 +394,13 @@ const routes = {
         pushState();
       }, 1500);
     }
+  },
+
+  // Start the background player. It waits while this editor is open, then takes over.
+  'POST /api/player': () => {
+    if (!fs.existsSync(PLAYER_EXE)) throw new Error('The player isn’t built yet: run player\\build.cmd');
+    spawn(PLAYER_EXE, [], { detached: true, stdio: 'ignore' }).unref();
+    return { ok: true };
   },
 
   'POST /api/startup-profile': async () => {

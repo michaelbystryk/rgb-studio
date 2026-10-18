@@ -3,3 +3,4 @@ settings.json
 settings.json.tmp
 *.log
 old/
+player/*.exe

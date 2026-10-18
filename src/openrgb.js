@@ -1,4 +1,4 @@
-// Minimal OpenRGB SDK client (protocol versions 0-5), no dependencies.
+// Minimal OpenRGB SDK client (protocol versions 0-5, plus profile saving on 6), no dependencies.
 // Protocol reference: https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Documentation/OpenRGBSDK.md
 import net from 'node:net';
 import { EventEmitter } from 'node:events';
@@ -13,6 +13,8 @@ const PKT = {
   REQUEST_CONTROLLER_DATA: 1,
   REQUEST_PROTOCOL_VERSION: 40,
   SET_CLIENT_NAME: 50,
+  SET_CLIENT_FLAGS: 52,
+  ACK: 10,
   DEVICE_LIST_UPDATED: 100,
   REQUEST_RESCAN_DEVICES: 140,
   PROFILE_LIST: 150,
@@ -144,6 +146,7 @@ export class OpenRGBClient extends EventEmitter {
     super();
     Object.assign(this, { host, port, name });
     this.protocol = 0;
+    this.serverProtocol = 0;
     this.connected = false;
     this.rx = Buffer.alloc(0);
     this.waiters = [];
@@ -169,7 +172,8 @@ export class OpenRGBClient extends EventEmitter {
         this.connected = true;
         try {
           const resp = await this.request(0, PKT.REQUEST_PROTOCOL_VERSION, new Writer().u32(CLIENT_PROTOCOL).buffer(), 1000);
-          this.protocol = Math.min(CLIENT_PROTOCOL, resp.readUInt32LE(0));
+          this.serverProtocol = resp.readUInt32LE(0);
+          this.protocol = Math.min(CLIENT_PROTOCOL, this.serverProtocol);
         } catch {
           this.protocol = 0; // servers before protocol 1 never answer the version request
         }
@@ -263,9 +267,58 @@ export class OpenRGBClient extends EventEmitter {
     r.u32(); // data_size
     return Array.from({ length: r.u16() }, () => r.str());
   }
-  saveProfile(name) { this.send(0, PKT.SAVE_PROFILE, cstr(name)); }
-  loadProfile(name) { this.send(0, PKT.LOAD_PROFILE, cstr(name)); }
+  // Resolve to true once OpenRGB has saved or loaded the profile. OpenRGB 1.1 (protocol 6) only
+  // saves profiles for a client that speaks protocol 6 and asks to be treated as local, so on those
+  // servers it goes over a short second connection; older ones take it on this one.
+  async saveProfile(name) {
+    if (this.serverProtocol >= 6) return profileRequest(this, PKT.SAVE_PROFILE, name);
+    this.send(0, PKT.SAVE_PROFILE, cstr(name));
+    return (await this.getProfiles()).includes(name);
+  }
+  async loadProfile(name) {
+    if (this.serverProtocol >= 6) return profileRequest(this, PKT.LOAD_PROFILE, name);
+    this.send(0, PKT.LOAD_PROFILE, cstr(name));
+    await this.getProfiles(); // answered in order, so OpenRGB has received it
+    return true;
+  }
   rescan() { if (this.protocol >= 5) this.send(0, PKT.REQUEST_RESCAN_DEVICES); }
+}
+
+const LOCAL_CLIENT_FLAGS = (1 << 2) | (1 << 16); // supports profiles, asks to be a local client
+
+// One profile packet over its own protocol 6 connection; true when OpenRGB acknowledges it with OK.
+function profileRequest({ host, port, name }, id, profile, timeout = 5000) {
+  return new Promise(resolve => {
+    const sock = net.createConnection({ host, port });
+    const header = (pid, size) => {
+      const h = Buffer.alloc(HEADER_SIZE);
+      MAGIC.copy(h);
+      h.writeUInt32LE(pid, 8);
+      h.writeUInt32LE(size, 12);
+      return h;
+    };
+    const packet = (pid, body) => sock.write(Buffer.concat([header(pid, body.length), body]));
+    const done = ok => { clearTimeout(timer); sock.destroy(); resolve(ok); };
+    const timer = setTimeout(() => done(false), timeout);
+    let rx = Buffer.alloc(0);
+    sock.on('error', () => done(false));
+    sock.on('data', chunk => {
+      rx = Buffer.concat([rx, chunk]);
+      while (rx.length >= HEADER_SIZE && rx.length >= HEADER_SIZE + rx.readUInt32LE(12)) {
+        const pid = rx.readUInt32LE(8), body = rx.subarray(HEADER_SIZE, HEADER_SIZE + rx.readUInt32LE(12));
+        rx = rx.subarray(HEADER_SIZE + body.length);
+        if (pid === PKT.REQUEST_PROTOCOL_VERSION) {
+          packet(PKT.SET_CLIENT_NAME, cstr(name));
+          packet(PKT.SET_CLIENT_FLAGS, new Writer().u32(LOCAL_CLIENT_FLAGS).buffer());
+        } else if (pid === PKT.ACK && body.length >= 8) {
+          const acked = body.readUInt32LE(0), status = body.readUInt32LE(4);
+          if (acked === PKT.SET_CLIENT_FLAGS) packet(id, cstr(profile));
+          else if (acked === id) done(status === 0);
+        }
+      }
+    });
+    sock.once('connect', () => packet(PKT.REQUEST_PROTOCOL_VERSION, new Writer().u32(6).buffer()));
+  });
 }
 
 export { NO_LED };

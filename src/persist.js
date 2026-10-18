@@ -130,8 +130,6 @@ export async function saveToPc(client, { devices, frames, lights, lookFor, style
 
   // Requests are answered in order, so once this returns OpenRGB has applied everything above.
   await client.getProfiles();
-  client.saveProfile(PROFILE);
-  const profiles = await client.getProfiles();
-  if (!profiles.includes(PROFILE)) throw new Error('OpenRGB did not save the profile');
+  if (!await client.saveProfile(PROFILE)) throw new Error('OpenRGB did not save the profile');
   return results;
 }

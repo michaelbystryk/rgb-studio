@@ -1,5 +1,6 @@
 import { createRigView } from './rig-view.js';
 import { cycleSeconds, caseSpot } from '/shared/rig-geometry.js';
+import { colorSwatch, pickingColor } from './color-picker.js';
 
 const $ = s => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -418,16 +419,16 @@ function renderTune() {
   $('#palette-hint').textContent = PALETTE_HINT[st.motion] || PALETTE_HINT.default;
 
   const look = Object.fromEntries(LOOK_KEYS.map(k => [k, st[k]]));
-  if (previewBar && document.activeElement?.type !== 'color') paintSwatch(previewBar, look);
+  if (previewBar && !pickingColor()) paintSwatch(previewBar, look);
   const sig = JSON.stringify([editArea, st.palette, st.motion, st.scene]);
-  if (sig === shownPalette || document.activeElement?.type === 'color') return;
+  if (sig === shownPalette || pickingColor()) return;
   shownPalette = sig;
   const pal = [...st.palette];
   const bar = previewBar = el('div', { class: 'preview-bar' });
   const paint = () => paintSwatch(bar, { ...look, palette: pal });
   const resend = () => { shownPalette = ''; sendLook({ palette: pal }); };
   const stops = pal.map((c, i) => el('div', { class: 'stop' },
-    el('input', { type: 'color', value: c, oninput: e => { pal[i] = e.target.value; paint(); sendScene({ palette: pal, area: editArea }); } }),
+    colorSwatch(c, { onInput: v => { pal[i] = v; paint(); sendScene({ palette: pal, area: editArea }); } }),
     pal.length > 1 ? el('button', { class: 'rm', title: 'Remove color', onclick: () => { pal.splice(i, 1); resend(); } }, '×') : null));
   const add = pal.length < 8 ? el('button', { class: 'add-stop', title: 'Add color', onclick: () => { pal.push(pal.at(-1)); resend(); } }, '+') : null;
   paint();
@@ -517,7 +518,7 @@ function openHardware(d) {
     if (m.colorsMax > 0) {
       const row = el('div', { class: 'palette' });
       const draw = () => row.replaceChildren(...hwSel.colors.map((c, i) => el('div', { class: 'stop' },
-        el('input', { type: 'color', value: c, oninput: e => { hwSel.colors[i] = e.target.value; } }),
+        colorSwatch(c, { onInput: v => { hwSel.colors[i] = v; } }),
         hwSel.colors.length > Math.max(1, m.colorsMin) ? el('button', { type: 'button', class: 'rm', onclick: () => { hwSel.colors.splice(i, 1); draw(); } }, '×') : null)),
         hwSel.colors.length < m.colorsMax ? el('button', { type: 'button', class: 'add-stop', onclick: () => { hwSel.colors.push(hwSel.colors.at(-1)); draw(); } }, '+') : '');
       draw();
@@ -584,21 +585,38 @@ function playerNote(player) {
   return el('div', { class: 'stack' }, el('p', { class: 'hint' }, 'Already running? It picks up the new look by itself.'), btn);
 }
 
+// The still colors being picked in the save dialog: a color or a gradient per area.
+let stillPick = null;
+function drawStill() {
+  const pickCustom = () => { $('#save-dlg input[name=still][value=custom]').checked = true; };
+  $('#still-colors').replaceChildren(...['case', 'desk'].map(area => {
+    const list = stillPick[area];
+    const bar = el('div', { class: 'preview-bar' });
+    const paint = () => paintSwatch(bar, { motion: 'still', palette: list, brightness: 100 });
+    const changed = () => { pickCustom(); drawStill(); };
+    const row = el('div', { class: 'palette' },
+      ...list.map((c, i) => el('div', { class: 'stop' },
+        colorSwatch(c, { title: `Pick a ${area} color`, onInput: v => { list[i] = v; pickCustom(); paint(); } }),
+        list.length > 1 ? el('button', { type: 'button', class: 'rm', title: 'Remove color', onclick: () => { list.splice(i, 1); changed(); } }, '×') : null)),
+      list.length < 8 ? el('button', { type: 'button', class: 'add-stop', title: 'Add a color to make a gradient', onclick: () => { list.push(list.at(-1)); changed(); } }, '+') : null,
+      list.length > 1 ? bar : null);
+    paint();
+    return el('div', { class: 'still-row' }, el('span', {}, area === 'case' ? 'Case' : 'Desk'), row);
+  }));
+}
+
 $('#save').addEventListener('click', () => {
   const { still, palette } = state.settings;
   const deskPalette = state.settings.desk?.palette || palette;
   $(`#save-dlg input[name=still][value=${still.mode}]`).checked = true;
-  $('#still-case').value = still.colors.case || palette[0];
-  $('#still-desk').value = still.colors.desk || deskPalette[0];
+  stillPick = { case: [...(still.colors.case || [palette[0]])], desk: [...(still.colors.desk || [deskPalette[0]])] };
+  drawStill();
   $('#save-out').replaceChildren();
   $('#save-go').disabled = false;
   $('#save-dlg').showModal();
 });
-for (const id of ['#still-case', '#still-desk']) {
-  $(id).addEventListener('input', () => { $('#save-dlg input[name=still][value=custom]').checked = true; });
-}
 $('#save-go').addEventListener('click', async () => {
-  const still = { mode: new FormData($('#save-dlg form')).get('still'), colors: { case: $('#still-case').value, desk: $('#still-desk').value } };
+  const still = { mode: new FormData($('#save-dlg form')).get('still'), colors: stillPick };
   $('#save-go').disabled = true;
   $('#save-out').replaceChildren(el('p', { class: 'hint' }, 'Saving…'));
   try {

@@ -150,12 +150,21 @@ function playerGroups(d) {
 }
 
 // What a device shows when you're not using it: your still colors, or the look as it is right now.
-const stillColor = area => settings.still.colors[area] || lookFor(area).palette[0];
+// Several still colors make a gradient that runs once from the first to the last across the area.
+function stillLook(area) {
+  const palette = settings.still.colors[area] || [lookFor(area).palette[0]];
+  const repeats = palette.length > 1 ? (palette.length - 1) / palette.length : 1;
+  return { motion: 'still', palette, brightness: 100, speed: 0, spread: (100 * (repeats - 0.25)) / 1.75 };
+}
 function stillFrame(d) {
   if (settings.still.mode === 'snapshot') return [...(frames[d.index] || d.colors)];
   const out = d.leds.map(() => '#000000');
-  for (const l of lights) if (l.device === d.index && !l.hidden) out.fill(stillColor(l.area), l.ledStart, l.ledStart + l.count);
-  return out;
+  for (const area of ['case', 'desk']) {
+    const idx = [];
+    leds[d.index].forEach((led, k) => { if (led.area === area) idx.push(k); });
+    if (idx.length) renderFrame(idx.map(k => leds[d.index][k]), stillLook(area), 0, d.index).forEach((c, j) => { out[idx[j]] = c; });
+  }
+  return maskHidden(d, out);
 }
 
 // The look for an area. The desk can have its own; otherwise it shares the case's.
@@ -371,7 +380,10 @@ const routes = {
       const { mode, colors = {} } = body.still;
       settings.still = {
         mode: mode === 'snapshot' ? 'snapshot' : 'custom',
-        colors: Object.fromEntries(['case', 'desk'].map(a => [a, isHex(colors[a]) ? colors[a] : settings.still.colors[a]])),
+        colors: Object.fromEntries(['case', 'desk'].map(a => {
+          const c = colors[a];
+          return [a, Array.isArray(c) && c.length && c.every(isHex) ? c.slice(0, 8) : settings.still.colors[a]];
+        })),
       };
     }
     const player = writePlayer({ devices, groups: playerGroups, render: (d, t) => maskHidden(d, renderDevice(d.index, t)), control: d => (isBuiltIn(d) || !directModeOf(d) ? null : client.modeBody(directModeOf(d))), still: stillFrame });
@@ -498,8 +510,7 @@ async function shutdown(reason) {
   console.log(`Stopping (${reason}).`);
   try {
     if (settings.saved && client?.connected) {
-      client.loadProfile(PROFILE);
-      await client.getProfiles(); // wait until OpenRGB has received it
+      await client.loadProfile(PROFILE);
     }
   } catch {}
   flushSettings(settings);

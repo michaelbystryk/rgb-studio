@@ -57,6 +57,13 @@ const round = v => Math.round(v * 10) / 10;
 
 let state = null;
 let selectedKey = null;
+let setup = null;
+let setupStarted = false;
+let setupTimer = null;
+let setupRequest = null;
+let setupSaving = false;
+const STEPS = ['openrgb', 'setup', 'devices', 'review', 'look'];
+const STEP_TITLE = ['Connect to OpenRGB', 'Your setup', 'Your devices', 'Check where lights are', 'Pick a look'];
 const ledEls = {}; // device index → [{ el, led }]
 
 async function post(url, body = {}) {
@@ -80,7 +87,7 @@ function toast(msg) {
 // ---- rig view -------------------------------------------------------------------------------
 
 const view = createRigView($('#rig'), {
-  onSelect: key => { selectedKey = key; renderSide(); },
+  onSelect: key => { if (!setup) selectedKey = key; renderSide(); },
   onMove: (key, pos) => tryPost('/api/light', { key, patch: { pos } }),
   onMoveCase: spot => tryPost('/api/rig', { case: { spot } }),
 });
@@ -120,7 +127,10 @@ function renderSide() {
   // Leave the panel alone while someone is typing in one of its number boxes.
   if (document.activeElement?.tagName === 'INPUT' && side.contains(document.activeElement)) return;
   const light = selectedKey && lightByKey(selectedKey);
-  side.replaceChildren(...(light ? lightEditor(light) : lightList()));
+  const scroll = side.scrollTop;
+  const kids = setup ? setupPanel() : light ? lightEditor(light) : lightList();
+  side.replaceChildren(...kids.filter(Boolean));
+  side.scrollTop = scroll;
 }
 
 function lightList() {
@@ -139,10 +149,11 @@ function lightList() {
   ];
 }
 
+const sizeInputs = (values, names, send) => el('div', { class: 'dims' }, ...values.map((v, i) =>
+  el('label', {}, names[i], numberInput(v, n => { const next = [...values]; next[i] = n; send(next); }, { step: 1, min: 10 }))));
+
 function rigSettings() {
   const rig = state.rig;
-  const sizeInputs = (values, names, send) => el('div', { class: 'dims' }, ...values.map((v, i) =>
-    el('label', {}, names[i], numberInput(v, n => { const next = [...values]; next[i] = n; send(next); }, { step: 1, min: 10 }))));
   return el('div', { class: 'side-group' },
     el('h3', {}, 'Your setup'),
     el('label', { class: 'side-field' }, 'Case sits',
@@ -152,6 +163,7 @@ function rigSettings() {
     caseSpotField(),
     el('div', { class: 'side-field' }, 'Desk size (cm)', sizeInputs(rig.desk.size, ['Width', 'Depth'], size => tryPost('/api/rig', { desk: { size } }))),
     el('div', { class: 'side-actions' },
+      el('button', { class: 'ghost small', onclick: startSetup }, 'Run setup again'),
       el('button', { class: 'ghost small', onclick: openShare }, 'Share / import…'),
       el('button', { class: 'link', onclick: () => confirm('Put every light back where RGB Studio first guessed?') && tryPost('/api/rig/reset') }, 'Reset layout')));
 }
@@ -244,6 +256,202 @@ function moveArea(l, area) {
   const [DW, DD] = state.rig.desk.size;
   const pos = area === 'case' ? [L / 2, H / 2, W / 2] : [DW / 2, 2, DD / 2];
   patchLight(l.key, { area, pos, plane: area === 'case' ? 'xy' : 'xz' });
+}
+
+// ---- first-run setup -------------------------------------------------------------------------
+
+function startSetup() {
+  setupStarted = true;
+  setup = { step: 0, check: null, missingOpen: false };
+  selectedKey = null;
+  view.select(null);
+  renderSide();
+  syncSetupCheck();
+  $('.stage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function refreshSetupCheck() {
+  const current = setup;
+  if (!current || setupRequest === current) return;
+  setupRequest = current;
+  try {
+    const r = await fetch('/api/setup/check');
+    if (!r.ok) return;
+    const check = await r.json();
+    if (setup !== current) return;
+    current.check = check;
+    renderSide();
+  } catch {
+    // The next poll can try again.
+  } finally {
+    if (setupRequest === current) setupRequest = null;
+  }
+}
+
+function syncSetupCheck() {
+  const polling = setup && STEPS[setup.step] === 'openrgb' && state.status !== 'connected';
+  if (polling && setupTimer === null) {
+    refreshSetupCheck();
+    setupTimer = setInterval(refreshSetupCheck, 3000);
+  } else if (!polling) {
+    clearInterval(setupTimer);
+    setupTimer = null;
+  }
+}
+
+function setupStep(step) {
+  setup.step = step;
+  if (STEPS[step] === 'devices') {
+    if (!setup.devicesSeen) {
+      setup.missingOpen = !state.devices.length;
+      setup.devicesSeen = true;
+    }
+    if (!setup.check) refreshSetupCheck();
+  }
+  view.select(null);
+  syncSetupCheck();
+  renderSide();
+  $('#side').scrollTop = 0;
+}
+
+async function finishSetup(saveToPc = false, skipped = false) {
+  if (setupSaving) return;
+  setupSaving = true;
+  renderSide();
+  try {
+    await post('/api/setup/done');
+    setup = null;
+    selectedKey = null;
+    syncSetupCheck();
+    view.select(null);
+    renderSide();
+    if (skipped) toast('You can run setup again from Your setup.');
+    if (saveToPc) $('#save').click();
+  } catch (e) { toast(e.message); }
+  finally { setupSaving = false; if (setup) renderSide(); }
+}
+
+function setupPanel() {
+  const step = STEPS[setup.step];
+  const body = { openrgb: setupOpenRGB, setup: setupRig, devices: setupDevices, review: setupReview, look: setupLook }[step]();
+  return [
+    el('div', { class: 'setup-head' }, el('h3', {}, 'Set up RGB Studio'),
+      el('p', { class: 'hint' }, `Step ${setup.step + 1} of ${STEPS.length} · ${STEP_TITLE[setup.step]}`)),
+    ...body,
+    el('div', { class: 'setup-nav' },
+      el('div', { class: 'setup-buttons' },
+        el('button', { class: 'ghost', hidden: setup.step === 0, disabled: setupSaving, onclick: () => setupStep(setup.step - 1) }, 'Back'),
+        el('button', { class: 'primary', disabled: setupSaving || (step === 'openrgb' && state.status !== 'connected'), onclick: () => step === 'look' ? finishSetup() : setupStep(setup.step + 1) }, step === 'look' ? 'Finish' : 'Next')),
+      step === 'look' && el('button', { class: 'ghost small', disabled: setupSaving || state.status !== 'connected', onclick: () => finishSetup(true) }, 'Finish and Save to PC…'),
+      el('button', { class: 'link', disabled: setupSaving, onclick: () => finishSetup(false, true) }, 'Skip setup')),
+  ];
+}
+
+const setupLink = (label, href) => el('a', { class: 'link', href, target: '_blank', rel: 'noopener' }, label);
+function setupInstall() {
+  return el('p', { class: 'hint' }, 'Install PawnIO from ', setupLink('pawnio.eu', 'https://pawnio.eu'),
+    ' first, then OpenRGB 0.9 or newer from ', setupLink('openrgb.org', 'https://openrgb.org/releases.html'),
+    ' with the Windows installer (.msi). Keep the option to install it as a background service.');
+}
+
+function setupOpenRGB() {
+  if (state.status === 'connected') return [el('p', { class: 'ok-note' }, `✓ Connected to OpenRGB · ${state.devices.length} devices`)];
+  const c = setup.check;
+  const hint = el('p', { class: 'hint' }, 'This page connects by itself as soon as OpenRGB is ready.');
+  if (c?.platform === 'other') return [setupInstall(), hint];
+  const row = (label, ok, note) => el('div', { class: 'setup-check ' + (ok === undefined ? 'wait' : ok ? 'ok' : 'bad') },
+    el('span', { 'aria-hidden': 'true' }, ok === undefined ? '…' : ok ? '✓' : '✗'),
+    el('div', {}, label, note && el('small', {}, note)));
+  let instruction = null;
+  if (c) {
+    if (!c.installed) instruction = setupInstall();
+    else {
+      const text = c.service === 'missing' && !c.app
+        ? 'Open OpenRGB as administrator, go to its SDK Server tab and click Start Server. Or reinstall it with the background service option so it runs on its own.'
+        : c.service === 'stopped' && !c.app
+          ? 'The OpenRGB service is installed but stopped. Restart your PC, or press Win+R, type services.msc, find OpenRGB and click Start.'
+          : !c.port
+            ? "OpenRGB is running, but its SDK server isn't answering. In OpenRGB's SDK Server tab, click Start Server."
+            : 'OpenRGB is answering. Connecting…';
+      instruction = el('p', { class: 'hint' }, text);
+    }
+  }
+  return [
+    el('div', { class: 'side-group' },
+      row('PawnIO driver', c ? c.pawnio === 'running' : undefined, 'Optional · needed for RAM and some motherboards'),
+      row('OpenRGB installed', c?.installed),
+      row(c?.app ? 'OpenRGB app is open' : 'OpenRGB service running', c ? c.service === 'running' || c.app : undefined),
+      row('SDK server answering on port 6742', c?.port)),
+    instruction, hint,
+  ];
+}
+
+function setupRig() {
+  const rig = state.rig;
+  return [el('div', { class: 'side-group' },
+    el('div', { class: 'side-field' }, "Where's your case?",
+      el('div', { class: 'seg' }, ...state.placements.map(placement => el('button', {
+        class: placement === rig.case.placement ? 'active' : '',
+        onclick: () => tryPost('/api/rig', { case: { placement } }),
+      }, PLACEMENT_LABEL[placement])))),
+    el('div', { class: 'side-field' }, 'Case size (cm)', sizeInputs(rig.case.size, ['Depth', 'Height', 'Width'], size => tryPost('/api/rig', { case: { size } }))),
+    el('div', { class: 'side-field' }, 'Desk size (cm)', sizeInputs(rig.desk.size, ['Width', 'Depth'], size => tryPost('/api/rig', { desk: { size } })))),
+    el('p', { class: 'hint' }, 'Rough sizes are fine. You can drag the case into place in the 3D view later.'),
+  ];
+}
+
+function setupDevices() {
+  const current = setup;
+  const c = setup.check;
+  return [
+    el('div', { class: 'side-group' }, el('h3', {}, `Found ${state.devices.length} devices`), ...state.devices.map(d =>
+      el('div', { class: 'device-head setup-device' }, deviceIcon(d),
+        el('div', {}, el('div', { class: 'device-name' }, prettyName(d)), el('div', { class: 'device-meta' }, `${d.ledCount} LEDs`))))),
+    el('details', { class: 'side-group setup-tips', open: setup.missingOpen, ontoggle: e => {
+      if (setup === current && e.target.isConnected) current.missingOpen = e.target.open;
+    } }, el('summary', {}, 'Something missing?'),
+      el('p', { class: 'hint' }, 'RAM or motherboard missing? OpenRGB needs the PawnIO driver for those. ',
+        c?.pawnio === 'missing' ? "PawnIO isn't installed. " : '',
+        setupLink('Install it', 'https://pawnio.eu'), ', then restart your PC.'),
+      c?.others?.length ? el('p', { class: 'hint' }, `These apps can hold on to your devices: ${c.others.join(', ')}. Turn off their lighting control or close them, then rescan.`) : null,
+      el('p', { class: 'hint' }, 'Still missing? Check that ', setupLink('OpenRGB supports it', 'https://openrgb.org/devices.html')),
+      el('button', { class: 'ghost small', disabled: state.status !== 'connected', onclick: () => tryPost('/api/rescan') }, 'Rescan')),
+  ];
+}
+
+function setupReview() {
+  const block = l => el('div', { class: 'light-row setup-light', tabindex: 0, onclick: () => view.select(l.key), onmouseenter: () => view.select(l.key), onfocus: () => view.select(l.key) },
+    el('span', {}, l.label), el('small', {}, MOUNTS[l.area][mountOf(l)]?.label ?? ''),
+    el('div', { class: 'side-actions' }, el('button', { class: 'ghost small', onclick: () => identify(l) }, 'Identify')),
+    el('label', { class: 'side-field' }, 'Where',
+      el('select', { onchange: e => moveArea(l, e.target.value) },
+        el('option', { value: 'case', selected: l.area === 'case' }, 'In the case'),
+        el('option', { value: 'desk', selected: l.area === 'desk' }, 'On the desk'))),
+    el('label', { class: 'side-field' }, 'Mounted',
+      el('select', { onchange: e => setMount(l, e.target.value) },
+        ...Object.entries(MOUNTS[l.area]).map(([key, m]) => el('option', { value: key, selected: key === mountOf(l) }, m.label)))),
+    el('button', { class: 'link', onclick: () => patchLight(l.key, { hidden: true }) }, 'Nothing connected'));
+  const group = (title, area) => {
+    const lights = state.lights.filter(l => l.area === area && !l.hidden);
+    return lights.length ? el('div', { class: 'side-group' }, el('h3', {}, title), ...lights.map(block)) : null;
+  };
+  const hidden = state.lights.filter(l => l.hidden);
+  return [
+    el('p', { class: 'hint' }, "RGB Studio guessed where each light is. Click Identify to blink it on your PC, and fix any guess that's wrong. You can fine-tune positions later by dragging lights in the 3D view."),
+    group('In your case', 'case'), group('On your desk', 'desk'),
+    hidden.length ? el('details', { class: 'side-group' }, el('summary', {}, `Not connected (${hidden.length})`),
+      ...hidden.map(l => el('div', { class: 'light-row off' }, el('span', {}, l.label),
+        el('button', { class: 'link', onclick: () => patchLight(l.key, { hidden: false }) }, 'It is connected')))) : null,
+  ];
+}
+
+function setupLook() {
+  return [el('div', { class: 'side-group' }, el('h3', {}, 'Pick your first look'),
+    el('div', { class: 'setup-scenes' }, ...Object.entries(state.scenes).map(([key, scene]) => {
+      const sw = el('span', { class: 'setup-swatch' });
+      sw.style.background = swatchStyle(scene);
+      return el('button', { class: 'scene' + (state.settings.scene === key ? ' active' : ''), onclick: () => tryPost('/api/scene', { scene: key, area: 'case' }) }, sw, scene.label);
+    })))];
 }
 
 // ---- share / import --------------------------------------------------------------------------
@@ -529,6 +737,12 @@ function renderFlows() {
 
 // ---- devices: one card per device, one row of LEDs per zone ---------------------------------
 
+function deviceIcon(d) {
+  const icon = el('div', { class: 'device-icon' });
+  icon.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[d.type] || ICONS.default}</svg>`;
+  return icon;
+}
+
 let deviceSig = '';
 function renderDevices() {
   const sig = JSON.stringify([state.devices.map(d => [d.key, d.ledCount, d.builtIn, d.activeMode]), state.lights.map(l => [l.key, l.label, l.hidden])]);
@@ -550,8 +764,7 @@ function renderDevices() {
           const name = lights.length > 1 ? el('button', { class: 'zone-name link', title: 'Show in the layout', onclick: () => { selectedKey = l.key; view.select(l.key); renderSide(); } }, l.label) : null;
           return el('div', { class: 'zone' + (l.hidden ? ' off' : '') }, name, leds);
         });
-    const icon = el('div', { class: 'device-icon' });
-    icon.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[d.type] || ICONS.default}</svg>`;
+    const icon = deviceIcon(d);
     const zoneInfo = d.zones.length > 1 ? ` · ${d.zones.length} zones` : '';
     return el('div', { class: 'device' },
       el('div', { class: 'device-head' }, icon,
@@ -736,6 +949,8 @@ $('#rescan').addEventListener('click', () => tryPost('/api/rescan'));
 const events = new EventSource('/api/events');
 events.addEventListener('state', e => {
   state = JSON.parse(e.data);
+  if (!setupStarted && !state.settings.setupDone) startSetup();
+  syncSetupCheck();
   if (selectedKey && !lightByKey(selectedKey)) selectedKey = null;
   render();
 });
@@ -752,4 +967,4 @@ events.addEventListener('frame', e => {
     }
   }
 });
-events.onerror = () => { if (state) { state.status = 'disconnected'; renderStatus(); } };
+events.onerror = () => { if (state) { state.status = 'disconnected'; syncSetupCheck(); renderStatus(); renderSide(); } };

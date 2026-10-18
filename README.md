@@ -57,6 +57,8 @@ First, [set up OpenRGB](#set-up-openrgb) (step 1 above). Then pick one:
 
 Open **RGB Studio** from the Start menu. This opens http://127.0.0.1:6750 in your browser. RGB Studio only listens on your own PC.
 
+The first time, a short setup guide checks OpenRGB, finds your devices and walks through where each light is; run it again any time from **Your setup → Run setup again**.
+
 It runs through `player\RGBStudio.exe`, so there's no console window. It shows up as "RGB Studio" with the logo in Task Manager, and ending it there ends the editor too. Its output goes to `%APPDATA%\RGB Studio\editor.log`.
 
 The editor closes by itself about 15 seconds after you close the tab. Run `player\RGBStudio.exe --keep-alive` to keep it running.

@@ -16,6 +16,7 @@ import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
 import { writePlayer } from './src/player-export.js';
+import { checkOpenRGB } from './src/setup-check.js';
 
 const PORT = 6750;
 const HOST = '127.0.0.1';
@@ -116,8 +117,8 @@ function recomputeLayout() {
       const list = spots.map(({ l, i, world }) => {
         const rel = world.map((v, k) => v - min[k]);
         const led = { p: flowPosition(rel, size, dir), n: rel.map((v, k) => (size[k] ? v / size[k] : 0.5)), area: l.area };
-        leds[l.device][l.ledStart + i] = led;
         led.face = [led.n[0] - 0.5, led.n[1] - 0.5]; // the whole rig seen from the front, so one radar or bubble spans it
+        leds[l.device][l.ledStart + i] = led;
         return led;
       });
       squeezeGaps(list.map(led => led.p), settings.gaps.rig / 100).forEach((p, i) => { list[i].p = p; });
@@ -307,6 +308,13 @@ const layoutChanged = () => { recomputeLayout(); save(); pushState(); return { o
 
 const routes = {
   'GET /api/state': () => publicState(),
+  'GET /api/setup/check': async () => ({ ...await checkOpenRGB(), connected: status === 'connected', devices: devices.length }),
+  'POST /api/setup/done': body => {
+    settings.setupDone = body.done !== false;
+    save();
+    pushState();
+    return { ok: true };
+  },
 
   'POST /api/quit': (_body, res) => {
     res.once('finish', () => shutdown('asked to quit'));

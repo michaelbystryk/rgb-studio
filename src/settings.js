@@ -13,6 +13,7 @@ const LEGACY_FILE = path.join(import.meta.dirname, '..', 'settings.json');
 const WRITE_DELAY = 300;
 
 export const DEFAULTS = {
+  setupDone: false,
   scene: 'cyberpunk',
   palette: SCENES.cyberpunk.palette,
   motion: SCENES.cyberpunk.motion,
@@ -52,6 +53,7 @@ export function loadSettings() {
   const rig = { ...DEFAULT_RIG, ...stored.rig };
   const settings = {
     ...DEFAULTS, ...stored,
+    setupDone: typeof stored.setupDone === 'boolean' ? stored.setupDone : Boolean(Object.keys(stored.rig?.lights || {}).length || stored.saved || stored.looks?.length),
     looks: Array.isArray(stored.looks) ? stored.looks.filter(l =>
       l && typeof l.id === 'string' && typeof l.name === 'string' && typeof l.at === 'string' &&
       l.look && typeof l.look === 'object' && !Array.isArray(l.look)) : [],

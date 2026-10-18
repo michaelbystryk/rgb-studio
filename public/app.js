@@ -188,7 +188,7 @@ function lightEditor(l) {
     if (l.shape === 'ring' || l.shape === 'bar' || l.shape === 'matrix') {
       kids.push(el('div', { class: 'dims' },
         el('label', {}, l.shape === 'ring' ? 'Radius' : 'Length', numberInput(l.size, size => patchLight(l.key, { size }), { min: 0.5 })),
-        el('label', {}, 'Turn °', numberInput(l.angle, angle => patchLight(l.key, { angle }), { step: 15 }))));
+        el('label', {}, l.shape === 'ring' ? 'Turn lights °' : 'Turn °', numberInput(l.angle, angle => patchLight(l.key, { angle }), { step: 15 }))));
     }
     if (l.shape === 'ring') {
       kids.push(el('label', { class: 'side-field' }, 'Lit faces',

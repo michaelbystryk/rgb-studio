@@ -201,6 +201,8 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
     group.position.set(...light.pos);
     group.quaternion.copy(PLANE_Q[light.plane]).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(light.angle || 0)));
     const body = buildBody(light, zone.matrix);
+    // A fan's turn only says where its first LED sits; the frame itself always mounts square.
+    if (light.body === 'fan') body.rotation.z = -THREE.MathUtils.degToRad(light.angle || 0);
     group.add(body);
 
     const layout = ledLayout(light, light.count, zone.matrix);

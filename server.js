@@ -238,6 +238,8 @@ async function connect() {
     c.on('error', () => {}); // 'close' follows and handles it
     await loadDevices();
     console.log(`Connected to OpenRGB (protocol ${c.protocol}), ${devices.length} devices`);
+    startup = await startupStatus(c); // newer OpenRGB reports it over the SDK
+    pushState();
   } catch (e) {
     c.close();
     if (client === c) client = null;
@@ -393,7 +395,7 @@ const routes = {
       const results = await saveToPc(client, { devices, frames: stillFrames, lights, lookFor, style: 'still', isBuiltIn });
       settings.saved = { at: new Date().toISOString(), style: 'player' };
       save();
-      startup = await startupStatus();
+      startup = await startupStatus(client);
       return { ok: true, profile: PROFILE, results, startup, player: { ...player, built: fs.existsSync(PLAYER_EXE) } };
     } finally {
       // OpenRGB writes the profile on a background thread, so give it a moment before taking the
@@ -416,7 +418,7 @@ const routes = {
   },
 
   'POST /api/startup-profile': async () => {
-    startup = await enableStartupProfile();
+    startup = await enableStartupProfile(client);
     pushState();
     return { ok: true, startup };
   },
@@ -535,7 +537,7 @@ server.on('error', e => {
 });
 server.listen(PORT, HOST, async () => {
   console.log(`RGB Studio running at http://${HOST}:${PORT}`);
-  startup = await startupStatus();
+  startup = await startupStatus(client);
   connect();
   if (args.has('--open')) openBrowser();
   pagesClosed(FIRST_VISIT_EXIT);

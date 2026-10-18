@@ -79,5 +79,5 @@ export function writePlayer({ devices, groups, render, control, still }, dir = P
   };
   write('player.bin', Buffer.concat(chunks));
   write('player.json', JSON.stringify(meta));
-  return { dir, bytes: offset, devices: meta.devices.filter(d => d.tracks.length).length };
+  return { dir, bytes: offset, devices: meta.devices.filter(d => d.tracks.length).map(d => d.name) };
 }

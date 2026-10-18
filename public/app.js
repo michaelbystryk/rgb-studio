@@ -554,7 +554,7 @@ function startupNote(startup) {
   if (startup.enabled) return el('p', { class: 'ok-note' }, '✓ OpenRGB shows your still colors when your PC starts and when it wakes from sleep.');
   const btn = el('button', { type: 'button', class: 'ghost', onclick: async () => {
     btn.disabled = true;
-    btn.textContent = 'Waiting for Windows…';
+    btn.textContent = startup.needsAdmin ? 'Waiting for Windows…' : 'Setting it up…';
     try {
       const out = await post('/api/startup-profile');
       btn.replaceWith(startupNote(out.startup));
@@ -565,7 +565,7 @@ function startupNote(startup) {
     }
   } }, 'Load it when my PC starts');
   return el('div', { class: 'stack' },
-    el('p', { class: 'hint' }, 'Devices without their own memory get their colors from OpenRGB. Let OpenRGB show your still colors when your PC starts and wakes up? Windows asks for permission once.'),
+    el('p', { class: 'hint' }, `Devices without their own memory get their colors from OpenRGB. Let OpenRGB show your still colors when your PC starts and wakes up?${startup.needsAdmin ? ' Windows asks for permission once.' : ''}`),
     btn);
 }
 
@@ -623,6 +623,7 @@ $('#save-go').addEventListener('click', async () => {
     const out = await post('/api/save', { still });
     $('#save-out').replaceChildren(
       el('p', { class: 'ok-note' }, '✓ Saved. Your look is recorded for the player, and your still colors are stored in OpenRGB.'),
+      el('p', { class: 'hint' }, `Recorded: ${out.player.devices.map(n => n.replace(/\s*\((Wired|Wireless)\)$/, '')).join(', ')}. Missing one? It may be asleep or still being found by OpenRGB; save again once it shows up.`),
       playerNote(out.player),
       startupNote(out.startup));
   } catch (e) {

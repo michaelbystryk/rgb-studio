@@ -1,4 +1,4 @@
-// Minimal OpenRGB SDK client (protocol versions 0-5, plus profile saving on 6), no dependencies.
+// Minimal OpenRGB SDK client (protocol versions 0-5, plus profiles and settings on 6), no dependencies.
 // Protocol reference: https://gitlab.com/CalcProgrammer1/OpenRGB/-/blob/master/Documentation/OpenRGBSDK.md
 import net from 'node:net';
 import { EventEmitter } from 'node:events';
@@ -20,6 +20,9 @@ const PKT = {
   PROFILE_LIST: 150,
   SAVE_PROFILE: 151,
   LOAD_PROFILE: 152,
+  GET_SETTINGS: 250,
+  MODIFY_SETTINGS: 252,
+  SAVE_SETTINGS: 254,
   UPDATELEDS: 1050,
   UPDATEMODE: 1101,
   SAVEMODE: 1102,
@@ -271,49 +274,66 @@ export class OpenRGBClient extends EventEmitter {
   // saves profiles for a client that speaks protocol 6 and asks to be treated as local, so on those
   // servers it goes over a short second connection; older ones take it on this one.
   async saveProfile(name) {
-    if (this.serverProtocol >= 6) return profileRequest(this, PKT.SAVE_PROFILE, name);
+    if (this.serverProtocol >= 6) return localSession(this, async call => (await call(PKT.SAVE_PROFILE, cstr(name))) === 0);
     this.send(0, PKT.SAVE_PROFILE, cstr(name));
     return (await this.getProfiles()).includes(name);
   }
   async loadProfile(name) {
-    if (this.serverProtocol >= 6) return profileRequest(this, PKT.LOAD_PROFILE, name);
+    if (this.serverProtocol >= 6) return localSession(this, async call => (await call(PKT.LOAD_PROFILE, cstr(name))) === 0);
     this.send(0, PKT.LOAD_PROFILE, cstr(name));
     await this.getProfiles(); // answered in order, so OpenRGB has received it
     return true;
   }
   rescan() { if (this.protocol >= 5) this.send(0, PKT.REQUEST_RESCAN_DEVICES); }
+
+  // OpenRGB's own settings (protocol 6 and up), e.g. getSettings('ProfileManager').
+  get hasSettings() { return this.serverProtocol >= 6; }
+  getSettings(key) {
+    return localSession(this, async call => JSON.parse((await call(PKT.GET_SETTINGS, cstr(key), true)).toString('utf8').replace(/\0+$/, '')));
+  }
+  // Merges { section: { key: value } } into OpenRGB's settings and saves them to disk.
+  modifySettings(changes) {
+    return localSession(this, async call =>
+      (await call(PKT.MODIFY_SETTINGS, cstr(JSON.stringify(changes)))) === 0 && (await call(PKT.SAVE_SETTINGS)) === 0);
+  }
 }
 
-const LOCAL_CLIENT_FLAGS = (1 << 2) | (1 << 16); // supports profiles, asks to be a local client
+const LOCAL_CLIENT_FLAGS = (1 << 2) | (1 << 4) | (1 << 16); // profiles, settings, asks to be a local client
 
-// One profile packet over its own protocol 6 connection; true when OpenRGB acknowledges it with OK.
-function profileRequest({ host, port, name }, id, profile, timeout = 5000) {
-  return new Promise(resolve => {
+// A short protocol 6 connection as a local client, for what OpenRGB 1.1 only allows those: saving
+// profiles and changing settings. fn(call) runs once the server has accepted us; call(id, body)
+// resolves to the packet's ack status, or with reply set, to the body of the server's answer.
+// Rejects if OpenRGB doesn't answer in time.
+function localSession({ host, port, name }, fn, timeout = 5000) {
+  return new Promise((resolve, reject) => {
     const sock = net.createConnection({ host, port });
-    const header = (pid, size) => {
+    let pending = null; // { id, reply, resolve }
+    const packet = (pid, body = Buffer.alloc(0)) => {
       const h = Buffer.alloc(HEADER_SIZE);
       MAGIC.copy(h);
       h.writeUInt32LE(pid, 8);
-      h.writeUInt32LE(size, 12);
-      return h;
+      h.writeUInt32LE(body.length, 12);
+      sock.write(Buffer.concat([h, body]));
     };
-    const packet = (pid, body) => sock.write(Buffer.concat([header(pid, body.length), body]));
-    const done = ok => { clearTimeout(timer); sock.destroy(); resolve(ok); };
-    const timer = setTimeout(() => done(false), timeout);
+    const call = (id, body, reply = false) => new Promise(res => { pending = { id, reply, resolve: res }; packet(id, body); });
+    const finish = (err, value) => { clearTimeout(timer); sock.destroy(); err ? reject(err) : resolve(value); };
+    const timer = setTimeout(() => finish(new Error('timed out waiting for OpenRGB')), timeout);
     let rx = Buffer.alloc(0);
-    sock.on('error', () => done(false));
+    sock.on('error', e => finish(e));
     sock.on('data', chunk => {
       rx = Buffer.concat([rx, chunk]);
       while (rx.length >= HEADER_SIZE && rx.length >= HEADER_SIZE + rx.readUInt32LE(12)) {
-        const pid = rx.readUInt32LE(8), body = rx.subarray(HEADER_SIZE, HEADER_SIZE + rx.readUInt32LE(12));
+        const pid = rx.readUInt32LE(8), body = Buffer.from(rx.subarray(HEADER_SIZE, HEADER_SIZE + rx.readUInt32LE(12)));
         rx = rx.subarray(HEADER_SIZE + body.length);
         if (pid === PKT.REQUEST_PROTOCOL_VERSION) {
           packet(PKT.SET_CLIENT_NAME, cstr(name));
           packet(PKT.SET_CLIENT_FLAGS, new Writer().u32(LOCAL_CLIENT_FLAGS).buffer());
-        } else if (pid === PKT.ACK && body.length >= 8) {
-          const acked = body.readUInt32LE(0), status = body.readUInt32LE(4);
-          if (acked === PKT.SET_CLIENT_FLAGS) packet(id, cstr(profile));
-          else if (acked === id) done(status === 0);
+        } else if (pid === PKT.ACK && body.length >= 8 && body.readUInt32LE(0) === PKT.SET_CLIENT_FLAGS) {
+          fn(call).then(v => finish(null, v), finish);
+        } else if (pending && (pending.reply ? pid === pending.id : pid === PKT.ACK && body.readUInt32LE(0) === pending.id)) {
+          const p = pending;
+          pending = null;
+          p.resolve(p.reply ? body : body.readUInt32LE(4));
         }
       }
     });

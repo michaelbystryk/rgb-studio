@@ -186,6 +186,19 @@ export function createRigView(host, { onSelect = () => {}, onMove = () => {}, on
       const m = boxWithEdges([w + 2, h + 2, 2], part, COLORS.partEdge);
       m.position.z = -1.1;
       g.add(m);
+    } else if (light.body === 'headset') {
+      // Seen from the front: the light sits on the front of the left earcup, the band arcs over
+      // to the right one.
+      const gap = 14.8, cupR = 4.5, cupW = 3.2;
+      for (const u of [0, gap]) {
+        const cup = new THREE.Mesh(new THREE.CylinderGeometry(cupR, cupR, cupW, 28), part);
+        cup.rotation.z = Math.PI / 2;
+        cup.position.set(u, 0, -cupR - 0.3);
+        g.add(cup);
+      }
+      const band = new THREE.Mesh(new THREE.TorusGeometry(gap / 2, 0.8, 10, 40, Math.PI), part);
+      band.position.set(gap / 2, cupR - 0.5, -cupR - 0.3);
+      g.add(band);
     } else if (light.body === 'mouse') {
       const m = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), part);
       m.scale.set(3.2, 6, 1.9);

@@ -13,7 +13,7 @@ How the file works (all sizes in centimetres):
 - `shape`: `ring` (fans; `size` is the radius, `rings` is 1, or 2 for fans lit on both faces), `bar` (`size` is its length), `matrix` (keyboards; `size` is the width), `dots` (single LEDs).
 - `angle` turns the light within its plane, in degrees. `flip: true` reverses the LED order if colors run the wrong way. For a fan lying flat, `sweep: true` makes rising effects cross it from the glass side instead of lighting the whole fan at once.
 - `hidden: true` means nothing is plugged into that zone.
-- `body` draws a simple model: `fan`, `ram`, `keyboard`, `mouse` or `null`.
+- `body` draws a simple model: `fan`, `ram`, `keyboard`, `mouse`, `headset` or `null`.
 - `props` are plain boxes for context, like a monitor: `{ "area", "label", "pos" (center), "size" [x, y, z], "style": "box" | "screen" | "stand" }`. Use `null` to let the app generate them.
 
 Typical spots in a 45 × 47 × 22 case: bottom fans at y = 2.5 with plane `xz`, rear fan at x = 2 with plane `yz`, front fans at x = 43 with plane `yz`, top fans at y = 44.5 with plane `xz`. 140 mm fans have a radius of about 6, and 120 mm fans about 5.

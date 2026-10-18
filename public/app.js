@@ -26,7 +26,7 @@ const ICONS = {
   cooler: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 10c0-4 3-5 4-3M14 12c4 0 5 3 3 4M12 14c0 4-3 5-4 3M10 12c-4 0-5-3-3-4"/>',
   default: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',
 };
-const TYPE_LABEL = { dram: 'Memory', gpu: 'Graphics card', motherboard: 'Motherboard', keyboard: 'Keyboard', mouse: 'Mouse', monitor: 'Monitor', ledstrip: 'LED controller', cooler: 'Cooler' };
+const TYPE_LABEL = { dram: 'Memory', gpu: 'Graphics card', motherboard: 'Motherboard', keyboard: 'Keyboard', mouse: 'Mouse', headset: 'Headset', monitor: 'Monitor', ledstrip: 'LED controller', cooler: 'Cooler' };
 const MOTION_LABEL = { still: 'Still', flow: 'Flow', bounce: 'Bounce', breathe: 'Breathe', twinkle: 'Twinkle', comet: 'Comet', noise: 'Drift', beam: 'Beam', bubbles: 'Bubbles', lightning: 'Lightning', fill: 'Fill' };
 const FLOW_LABEL = {
   case: { up: 'Rising ↑', down: 'Falling ↓', front: 'Rear → front', rear: 'Front → rear', diagonal: 'Diagonal ↗', out: 'From center', spiral: 'Spiral ↻' },

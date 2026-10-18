@@ -45,7 +45,7 @@ All sizes and positions are in centimetres.
 | `flip` | `true` reverses the LED order, if colors run the wrong way. On a fan this changes which way the LEDs run around the ring; if effects start from the wrong edge, add 180 to `angle` (the **Upside down** button). |
 | `sweep` | For fans lying flat (`plane` `xz`): `true` makes effects treat the fan as tilted up to face the glass, so rising effects sweep across it from the glass side instead of lighting it all at once. |
 | `hidden` | `true` when nothing is plugged into that zone. |
-| `body` | The model drawn around it: `fan`, `ram`, `keyboard`, `mouse` or `null`. |
+| `body` | The model drawn around it: `fan`, `ram`, `keyboard`, `mouse`, `headset` or `null`. |
 
 Desk lights in the `xy` plane that sit behind a monitor (a `screen` prop) light up the wall behind the desk in the 3D view.
 

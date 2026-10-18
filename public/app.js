@@ -325,15 +325,36 @@ let editArea = 'case';
 const editing = () => (editArea === 'desk' && state.settings.desk ? state.settings.desk : state.settings);
 const sendLook = body => tryPost('/api/scene', { ...body, area: editArea });
 
+// "Whole rig" shares one look; picking Case or Desk splits them, and both sections then edit that part.
+const TARGETS = {
+  all: { label: 'Whole rig', title: '', hint: 'One look across every device, perfectly in sync.' },
+  case: { label: 'Case', title: ' for the case', hint: 'Fans, RAM and motherboard. The desk keeps its own look.' },
+  desk: { label: 'Desk', title: ' for the desk', hint: 'Keyboard, mouse and monitor. The case keeps its own look.' },
+};
+// What was just picked, until the server's state catches up, so the switch doesn't flick back.
+let wantSplit = null;
+function isSplit() {
+  const split = !!state.settings.desk;
+  if (wantSplit === split) wantSplit = null;
+  return wantSplit ?? split;
+}
+function pickTarget(target) {
+  wantSplit = target !== 'all';
+  editArea = target === 'all' ? 'case' : target;
+  tryPost('/api/scene', { own: wantSplit });
+  render();
+}
+
 function renderLookTarget() {
-  const own = !!state.settings.desk;
-  if (!own) editArea = 'case';
-  $('#look-hint').textContent = !own ? 'Applies to every device at once, perfectly in sync.'
-    : editArea === 'desk' ? 'Changing the desk’s look: keyboard, mouse and monitor.' : 'Changing the case’s look: fans, RAM and motherboard.';
-  const pick = area => el('button', { class: editArea === area ? 'active' : '', onclick: () => { editArea = area; render(); } }, area === 'case' ? 'Case' : 'Desk');
-  $('#look-area').replaceChildren(...(own
-    ? [el('div', { class: 'seg' }, pick('case'), pick('desk')), el('button', { class: 'link', onclick: () => tryPost('/api/scene', { own: false }) }, 'Use one look for everything')]
-    : [el('button', { class: 'ghost small', onclick: () => { editArea = 'desk'; sendLook({ own: true }); } }, 'Give the desk its own look')]));
+  if (!isSplit()) editArea = 'case';
+  const target = isSplit() ? editArea : 'all';
+  const seg = () => el('div', { class: 'seg' }, ...Object.entries(TARGETS).map(([k, t]) =>
+    el('button', { class: k === target ? 'active' : '', onclick: () => pickTarget(k) }, t.label)));
+  $('#look-title').textContent = `1 · Pick a look${TARGETS[target].title}`;
+  $('#tune-title').textContent = `2 · Fine-tune it${TARGETS[target].title}`;
+  $('#look-hint').textContent = TARGETS[target].hint;
+  $('#look-area').replaceChildren(seg());
+  $('#tune-area').replaceChildren(seg());
 }
 
 // The selected look's card follows your fine-tuning; the others show each scene as it comes.

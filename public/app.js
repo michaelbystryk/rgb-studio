@@ -69,6 +69,8 @@ const ledEls = {}; // device index → [{ el, led }]
 async function post(url, body = {}) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const out = await r.json().catch(() => ({}));
+  // An editor started before an update doesn't know newer requests (older ones answer 405).
+  if (r.status === 405) throw new Error('RGB Studio was updated while it was running. Restart it to finish updating.');
   if (!r.ok) throw new Error(out.error || r.statusText);
   return out;
 }
@@ -949,7 +951,7 @@ $('#rescan').addEventListener('click', () => tryPost('/api/rescan'));
 const events = new EventSource('/api/events');
 events.addEventListener('state', e => {
   state = JSON.parse(e.data);
-  if (!setupStarted && !state.settings.setupDone) startSetup();
+  if (!setupStarted && state.settings.setupDone === false) startSetup(); // undefined: an editor from before the guide
   syncSetupCheck();
   if (selectedKey && !lightByKey(selectedKey)) selectedKey = null;
   render();

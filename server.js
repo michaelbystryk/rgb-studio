@@ -33,6 +33,7 @@ const SHARED = path.join(ROOT, 'shared');
 const THREE_DIR = path.join(ROOT, 'node_modules', 'three');
 const PLAYER_EXE = path.join(ROOT, 'player', 'RGBStudioPlayer.exe');
 const args = new Set(process.argv.slice(2));
+const OUTDATED = 'RGB Studio was updated while it was running. Restart it to finish updating.';
 
 const settings = loadSettings();
 const save = () => saveSettings(settings);
@@ -624,6 +625,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname.startsWith('/api/')) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: OUTDATED }));
+  }
   if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
   const p = url.pathname;
   // Three.js is served straight from node_modules so everything works offline.

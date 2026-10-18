@@ -11,7 +11,7 @@ import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
 import { SCENES, MOTIONS, BACKDROP_MOTIONS, renderFrame } from './src/effects.js';
 import { isHex } from './src/color.js';
 import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
-import { FLOWS, effectPositions, areaSize, areaToWorld, worldBox, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
+import { FLOWS, MAX_SPEED, effectPositions, areaSize, areaToWorld, worldBox, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
 import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
@@ -288,7 +288,7 @@ function cleanLook(look, current) {
   if (typeof look.scene === 'string' && Object.hasOwn(SCENES, look.scene)) next.scene = look.scene;
   if (MOTIONS.includes(look.motion)) next.motion = look.motion;
   if (Array.isArray(look.palette) && look.palette.length && look.palette.every(isHex)) next.palette = look.palette.slice(0, 8);
-  for (const k of ['speed', 'brightness', 'spread', 'background']) if (Number.isFinite(look[k])) next[k] = num(look[k], 0, 100);
+  for (const k of ['speed', 'brightness', 'spread', 'background']) if (Number.isFinite(look[k])) next[k] = num(look[k], 0, k === 'speed' ? MAX_SPEED : 100);
   return next;
 }
 
@@ -321,7 +321,7 @@ const routes = {
     if (scene) Object.assign(look, { scene: body.scene, motion: scene.motion, palette: [...scene.palette], background: scene.background ?? 0 });
     if (MOTIONS.includes(body.motion)) look.motion = body.motion;
     if (Array.isArray(body.palette) && body.palette.length && body.palette.every(isHex)) look.palette = body.palette.slice(0, 8);
-    for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) look[k] = num(body[k], 0, 100);
+    for (const k of ['speed', 'brightness', 'spread', 'background']) if (body[k] !== undefined) look[k] = num(body[k], 0, k === 'speed' ? MAX_SPEED : 100);
     if (status === 'connected') takeControl();
     lastSolid = null;
     save();

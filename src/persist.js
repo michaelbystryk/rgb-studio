@@ -55,7 +55,7 @@ function directionFor(m, look, area) {
 // Configure one hardware mode from the look. Returns the LED colors to send, if the mode uses them.
 function configureMode(m, look, frame) {
   const pct = look.brightness;
-  if (has(m, MODE_FLAG.HAS_SPEED)) m.speed = scale(m.speedMin, m.speedMax, look.speed);
+  if (has(m, MODE_FLAG.HAS_SPEED)) m.speed = scale(m.speedMin, m.speedMax, Math.min(100, look.speed));
   const dimInColor = !has(m, MODE_FLAG.HAS_BRIGHTNESS);
   if (!dimInColor) m.brightness = scale(m.brightnessMin, m.brightnessMax, pct);
   if (has(m, MODE_FLAG.HAS_MODE_SPECIFIC_COLOR) && m.colorsMax > 0) {

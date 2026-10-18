@@ -167,5 +167,7 @@ export function flowPosition(pos, size, dir) {
   return -(n[0] * dir[0] + n[1] * dir[1] + n[2] * dir[2]);
 }
 
-// One full palette cycle takes 20 s at speed 0 and 1.5 s at speed 100, on an exponential curve.
+// One full palette cycle takes 20 s at speed 0, 1.5 s at 100 and about 0.5 s at MAX_SPEED, on an
+// exponential curve. Hardware modes can't go faster than their own top speed, so they cap at 100.
+export const MAX_SPEED = 140;
 export const cycleSeconds = speed => 20 * Math.pow(0.075, speed / 100);

@@ -10,7 +10,7 @@ import { OpenRGBClient, MODE_FLAG, COLOR_MODE } from './src/openrgb.js';
 import { SCENES, MOTIONS, BACKDROP_MOTIONS, renderFrame } from './src/effects.js';
 import { isHex } from './src/color.js';
 import { deviceKeys, buildLights, defaultProps, cleanLight, cleanProp, cleanRigShape, PLACEMENTS, DEFAULT_RIG } from './src/rig.js';
-import { FLOWS, effectPositions, areaSize, flowPosition, spiralTurn } from './shared/rig-geometry.js';
+import { FLOWS, effectPositions, areaSize, flowPosition, spiralTurn, squeezeGaps } from './shared/rig-geometry.js';
 import { loadSettings, saveSettings, flushSettings } from './src/settings.js';
 import { saveToPc, PROFILE } from './src/persist.js';
 import { startupStatus, enableStartupProfile } from './src/startup.js';
@@ -97,6 +97,7 @@ function takeControl() {
 function recomputeLayout() {
   lights = buildLights(devices, keys, settings.rig);
   leds = devices.map(d => Array.from(d.leds, () => ({ p: 0, n: [0.5, 0.5, 0.5], area: 'case' })));
+  const placed = { case: [], desk: [] };
   for (const l of lights) {
     if (l.hidden) continue;
     const z = devices[l.device].zones[l.zone];
@@ -107,7 +108,11 @@ function recomputeLayout() {
       const led = { p: flowPosition(pos, size, dir), n: pos.map((v, k) => v / box[k]), area: l.area };
       if (dir === 'spiral') led.turn = spiralTurn(pos, size);
       leds[l.device][l.ledStart + i] = led;
+      placed[l.area].push(led);
     });
+  }
+  for (const [area, list] of Object.entries(placed)) {
+    squeezeGaps(list.map(led => led.p), settings.gaps[area] / 100).forEach((p, i) => { list[i].p = p; });
   }
   lastSolid = null;
 }
@@ -232,8 +237,12 @@ const routes = {
   },
 
   'POST /api/flow': body => {
-    if (!FLOWS[body.area] || !(body.direction in FLOWS[body.area])) throw new Error('unknown flow direction');
-    settings.flow = { ...settings.flow, [body.area]: body.direction };
+    if (!FLOWS[body.area]) throw new Error('unknown area');
+    if (body.direction !== undefined) {
+      if (!(body.direction in FLOWS[body.area])) throw new Error('unknown flow direction');
+      settings.flow = { ...settings.flow, [body.area]: body.direction };
+    }
+    if (body.gaps !== undefined) settings.gaps = { ...settings.gaps, [body.area]: num(body.gaps, 0, 100) };
     return layoutChanged();
   },
 

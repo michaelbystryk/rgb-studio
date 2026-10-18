@@ -280,11 +280,35 @@ $('#share-import').addEventListener('click', async () => {
 // ---- looks ----------------------------------------------------------------------------------
 
 const loop = pal => [...pal, pal[0]];
+const PASSES = ['comet', 'fill', 'beam'];
 function swatchStyle(s) {
   const pal = s.palette;
   if (s.motion === 'still') return pal.length > 1 ? `linear-gradient(90deg in hsl shorter hue, ${pal.join(', ')})` : pal[0];
-  if (['comet', 'fill', 'beam'].includes(s.motion)) return `linear-gradient(90deg, ${pal.flatMap((c, i) => [`#000 ${(i / pal.length) * 100}%`, `${c} ${((i + 0.8) / pal.length) * 100}%`, `#000 ${((i + 0.85) / pal.length) * 100}%`]).join(', ')})`;
+  // The dark parts glow faintly in the same color when the look has a background glow.
+  const dark = c => (s.background ? `color-mix(in srgb, ${c} ${s.background * 0.5}%, #000)` : '#000');
+  if (PASSES.includes(s.motion)) return `linear-gradient(90deg, ${pal.flatMap((c, i) => [`${dark(c)} ${(i / pal.length) * 100}%`, `${c} ${((i + 0.8) / pal.length) * 100}%`, `${dark(c)} ${((i + 0.85) / pal.length) * 100}%`]).join(', ')})`;
   return `linear-gradient(90deg in hsl shorter hue, ${loop(loop(pal)).join(', ')})`;
+}
+
+// Paints a preview of a look and plays it at the look's own speed, brightness and gradient width,
+// so fine-tuning shows up here too.
+function paintSwatch(node, look) {
+  node.className = node.className.replace(/\bm-\S+/g, '').trim() + ` m-${look.motion}`;
+  node.style.background = swatchStyle(look);
+  const b = (look.brightness ?? 100) / 100;
+  if (look.motion === 'still') { node.style.backgroundSize = '100% 100%'; node.style.filter = `brightness(${b})`; return; }
+  // A wider gradient fits more colors into the preview. The image is one tile, so sliding by
+  // exactly one tile loops seamlessly whatever its size.
+  const size = ['flow', 'bounce', 'breathe'].includes(look.motion) ? Math.max(120, 400 - 4 * (look.spread ?? 50)) : 200;
+  node.style.backgroundSize = `${size}% 100%`;
+  node.style.setProperty('--to', `${(-100 * size) / (size - 100)}%`);
+  const cycle = cycleSeconds(look.speed ?? 40);
+  const duration = {
+    flow: [2 * cycle], bounce: [cycle], breathe: [4 * cycle, cycle], twinkle: [2 * cycle],
+    noise: [3 * cycle], bubbles: [3 * cycle], lightning: [3],
+  }[look.motion] || [cycle * look.palette.length];
+  node.style.animationDuration = duration.map(d => `${d.toFixed(2)}s`).join(', ');
+  node.style.filter = look.motion === 'lightning' ? '' : look.motion === 'twinkle' ? `brightness(${0.6 * b}) contrast(1.4)` : `brightness(${b})`;
 }
 
 function renderStatus() {
@@ -296,13 +320,21 @@ function renderStatus() {
   $('#save').disabled = state.status !== 'connected';
 }
 
+// The selected look's card follows your fine-tuning; the others show each scene as it comes.
+const LOOK_KEYS = ['motion', 'palette', 'speed', 'brightness', 'spread', 'background'];
+let scenesSig = '';
 function renderScenes() {
+  const st = state.settings;
+  const sig = JSON.stringify([Object.keys(state.scenes), st.scene, LOOK_KEYS.map(k => st[k])]);
+  if (sig === scenesSig) return;
+  scenesSig = sig;
   $('#scenes').replaceChildren(...Object.entries(state.scenes).map(([key, s]) => {
-    const sw = el('div', { class: `swatch m-${s.motion}` });
-    sw.style.background = swatchStyle(s);
-    sw.style.backgroundSize = s.motion === 'still' ? '100% 100%' : '200% 100%';
-    return el('button', { class: 'scene' + (state.settings.scene === key ? ' active' : ''), onclick: () => tryPost('/api/scene', { scene: key }) },
-      sw, el('div', { class: 'name' }, s.label), el('div', { class: 'kind' }, MOTION_LABEL[s.motion]));
+    const active = st.scene === key;
+    const look = active ? Object.fromEntries(LOOK_KEYS.map(k => [k, st[k]])) : s;
+    const sw = el('div', { class: 'swatch' });
+    paintSwatch(sw, look);
+    return el('button', { class: 'scene' + (active ? ' active' : ''), onclick: () => tryPost('/api/scene', { scene: key }) },
+      sw, el('div', { class: 'name' }, s.label), el('div', { class: 'kind' }, MOTION_LABEL[look.motion]));
   }));
 }
 
@@ -328,6 +360,7 @@ const PALETTE_HINT = {
 };
 
 let shownPalette = '';
+let previewBar = null;
 function renderTune() {
   const st = state.settings;
   const moving = st.motion !== 'still';
@@ -347,15 +380,14 @@ function renderTune() {
   $('#spread-hint').textContent = hint;
   $('#palette-hint').textContent = PALETTE_HINT[st.motion] || PALETTE_HINT.default;
 
+  const look = Object.fromEntries(LOOK_KEYS.map(k => [k, st[k]]));
+  if (previewBar && document.activeElement?.type !== 'color') paintSwatch(previewBar, look);
   const sig = JSON.stringify([st.palette, st.motion, st.scene]);
   if (sig === shownPalette || document.activeElement?.type === 'color') return;
   shownPalette = sig;
   const pal = [...st.palette];
-  const bar = el('div', { class: `preview-bar m-${st.motion}` });
-  const paint = () => {
-    bar.style.background = swatchStyle({ palette: pal, motion: st.motion });
-    bar.style.backgroundSize = st.motion === 'still' ? '100% 100%' : '200% 100%';
-  };
+  const bar = previewBar = el('div', { class: 'preview-bar' });
+  const paint = () => paintSwatch(bar, { ...look, palette: pal });
   const resend = () => { shownPalette = ''; tryPost('/api/scene', { palette: pal }); };
   const stops = pal.map((c, i) => el('div', { class: 'stop' },
     el('input', { type: 'color', value: c, oninput: e => { pal[i] = e.target.value; paint(); sendScene({ palette: pal }); } }),
@@ -374,8 +406,16 @@ function showSpeed(speed) {
   $('#speed-val').textContent = text ? `${text} ${cycleSeconds(speed).toFixed(1)}s` : '';
 }
 
+const sendGaps = debounce(body => tryPost('/api/flow', body), 60);
+function showGaps(area, v) {
+  $(`#gaps-${area}-val`).textContent = v >= 100 ? 'as measured' : v ? `${v}% of the gaps` : 'gaps skipped';
+}
+
 function renderFlows() {
   for (const area of ['case', 'desk']) {
+    const gaps = $(`#gaps-${area}`);
+    if (document.activeElement !== gaps) gaps.value = state.settings.gaps[area];
+    showGaps(area, state.settings.gaps[area]);
     const cur = state.settings.flow[area];
     $(`#flow-${area}`).replaceChildren(...state.flows[area].map(dir =>
       el('button', { class: dir === cur ? 'active' : '', onclick: () => tryPost('/api/flow', { area, direction: dir }) }, FLOW_LABEL[area][dir] || dir)));
@@ -526,6 +566,13 @@ function render() {
   renderSide();
   renderDevices();
   view.setState(state);
+}
+
+for (const area of ['case', 'desk']) {
+  $(`#gaps-${area}`).addEventListener('input', e => {
+    showGaps(area, +e.target.value);
+    sendGaps({ area, gaps: +e.target.value });
+  });
 }
 
 for (const k of ['speed', 'brightness', 'spread', 'background']) {

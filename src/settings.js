@@ -16,6 +16,7 @@ export const DEFAULTS = {
   spread: 50,
   background: 0, // how bright the dark parts of effects like comet are
   flow: { case: 'up', desk: 'right' },
+  gaps: { case: 100, desk: 100 }, // how much of the empty space between parts effects cross, in %
   rig: DEFAULT_RIG,
   builtIn: {}, // device key → { mode } for devices running their own hardware effect
   saved: null, // { at, style } after "Save to PC"
@@ -32,6 +33,7 @@ export function loadSettings() {
   return {
     ...DEFAULTS, ...stored,
     flow: { ...DEFAULTS.flow, ...stored.flow },
+    gaps: { ...DEFAULTS.gaps, ...stored.gaps },
     rig: { ...rig, case: { ...DEFAULT_RIG.case, ...rig.case }, desk: { ...DEFAULT_RIG.desk, ...rig.desk }, lights: { ...rig.lights } },
   };
 }

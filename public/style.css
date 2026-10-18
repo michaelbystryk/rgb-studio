@@ -65,7 +65,7 @@ button:disabled { opacity: .45; cursor: default; }
 .m-bounce { animation: slide 2s ease-in-out infinite alternate; }
 .m-breathe { animation: slide 12s linear infinite, breathe 3s ease-in-out infinite; }
 .m-twinkle { filter: brightness(.6) contrast(1.4); }
-@keyframes slide { from { background-position: 0 0; } to { background-position: -200% 0; } }
+@keyframes slide { from { background-position: 0 0; } to { background-position: var(--to, -200%) 0; } }
 @keyframes breathe { 50% { opacity: .25; } }
 .scene .name { font-weight: 600; }
 .scene .kind { font-size: 12px; color: var(--muted); }
@@ -141,6 +141,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); height: 22px; }
 .flows { display: flex; gap: 14px 32px; margin-top: 14px; flex-wrap: wrap; }
 .flow-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .flow-row > span { font-weight: 600; font-size: 14px; min-width: 76px; }
+.gap-field { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.gap-field input { width: 120px; }
+.gap-field em { font-style: normal; min-width: 92px; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; width: fit-content; }
 .seg button { background: transparent; border: 0; padding: 6px 11px; border-radius: 7px; font-size: 13px; color: var(--muted); }
 .seg button:hover { color: var(--text); }

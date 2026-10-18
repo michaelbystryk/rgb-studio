@@ -75,6 +75,26 @@ export function effectPositions(light, count, matrix) {
   return pos.map(([x, y, z]) => [x, cy + light.size + (cz - z), cz + (y - cy)]);
 }
 
+// Flow positions with the empty stretches between parts shortened, so effects spend their time on
+// lights rather than crossing empty space. `keep` is the share of each gap that stays (1 = as
+// measured). Steps up to GAP_FLOOR count as part of one light and stay as they are. The empty
+// space before the first light and after the last one counts as a gap too, and the result still
+// runs from 0 to -1.
+export const GAP_FLOOR = 0.03;
+export function squeezeGaps(ps, keep) {
+  if (keep >= 1 || ps.length < 2) return ps;
+  const sorted = [...new Set([0, ...ps, -1])].sort((a, b) => b - a); // p runs from 0 down to -1
+  const at = new Map([[sorted[0], 0]]);
+  let total = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i - 1] - sorted[i];
+    total += gap > GAP_FLOOR ? GAP_FLOOR + (gap - GAP_FLOOR) * keep : gap;
+    at.set(sorted[i], total);
+  }
+  const scale = total > 0 ? (sorted[0] - sorted.at(-1)) / total : 0;
+  return ps.map(p => sorted[0] - at.get(p) * scale);
+}
+
 export const areaSize = (rig, area) => (area === 'case' ? rig.case.size : [rig.desk.size[0], 0, rig.desk.size[1]]);
 
 // Where the middle of the case's footprint sits, in cm from the desk area's back-left corner, and

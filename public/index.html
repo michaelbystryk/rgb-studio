@@ -34,8 +34,10 @@
         <aside id="side" class="side"></aside>
       </div>
       <div class="flows">
-        <div class="flow-row"><span>Case flow</span><div id="flow-case" class="seg"></div></div>
-        <div class="flow-row"><span>Desk flow</span><div id="flow-desk" class="seg"></div></div>
+        <div class="flow-row"><span>Case flow</span><div id="flow-case" class="seg"></div>
+          <label class="gap-field" title="How long effects take to cross empty space between parts. Lower it to jump the gaps faster.">Empty space <input type="range" id="gaps-case" min="0" max="100"> <em id="gaps-case-val"></em></label></div>
+        <div class="flow-row"><span>Desk flow</span><div id="flow-desk" class="seg"></div>
+          <label class="gap-field" title="How long effects take to cross empty space between parts. Lower it to jump the gaps faster.">Empty space <input type="range" id="gaps-desk" min="0" max="100"> <em id="gaps-desk-val"></em></label></div>
       </div>
     </section>
 

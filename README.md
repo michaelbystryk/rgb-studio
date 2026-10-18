@@ -12,7 +12,7 @@ A simpler way to light up a PC with [OpenRGB](https://openrgb.org). Pick a look,
 ## Requirements
 
 - Windows, with [OpenRGB](https://openrgb.org) 0.9 or newer (see below).
-- [Node.js](https://nodejs.org) 20 or newer, for the editor. The tray player doesn't need it.
+- [Node.js](https://nodejs.org) 20 or newer, for the editor (see below). The tray player doesn't need it.
 
 ## Set up OpenRGB
 
@@ -23,6 +23,18 @@ RGB Studio talks to your lights through OpenRGB, so set that up first:
 3. **Check your devices.** Open OpenRGB once and make sure everything shows up. If something is missing, see OpenRGB's [Windows setup guide](https://gitlab.com/OpenRGBDevelopers/OpenRGB-Wiki/-/blob/stable/User-Documentation/OpenRGB-Windows-Setup-and-Usage.md). Then close the window. If it opens by itself when Windows starts, turn that off in Task Manager under **Startup apps**; the service keeps running either way.
 
 Not using the service? Run OpenRGB as administrator and start its SDK server (the **SDK Server** tab), and leave it open while you use RGB Studio.
+
+## Install Node.js
+
+The editor runs on Node.js:
+
+1. Go to [nodejs.org](https://nodejs.org) and download the Windows installer (`.msi`) for the **LTS** version.
+2. Run it and keep the default options. You can leave **Automatically install the necessary tools** unticked; RGB Studio doesn't need them.
+3. To check it worked, open a new Command Prompt or PowerShell window and run `node -v`. It should print `v20` or higher.
+
+Or, in PowerShell or Command Prompt: `winget install OpenJS.NodeJS.LTS`
+
+If `start.cmd` says `node` isn't recognized right after installing, sign out of Windows and back in, then try again.
 
 ## Run it
 

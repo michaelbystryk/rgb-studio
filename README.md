@@ -12,8 +12,8 @@ A simpler way to light up a PC with [OpenRGB](https://openrgb.org). Pick a look,
 
 ## Requirements
 
-- Windows, with [OpenRGB](https://openrgb.org) 0.9 or newer (see below).
-- [Node.js](https://nodejs.org) 20 or newer, for the editor (see below). The tray player doesn't need it.
+- Windows 10 or 11, with [OpenRGB](https://openrgb.org) 0.9 or newer (see below).
+- Nothing else. Node.js is bundled in the installer and the zip.
 
 ## Set up OpenRGB
 
@@ -25,9 +25,31 @@ RGB Studio talks to your lights through OpenRGB, so set that up first:
 
 Not using the service? Run OpenRGB as administrator and start its SDK server (the **SDK Server** tab), and leave it open while you use RGB Studio.
 
-## Install Node.js
+## Install RGB Studio
 
-The editor runs on Node.js:
+First, [set up OpenRGB](#set-up-openrgb) (step 1 above). Then pick one:
+
+**Installer (recommended).** Download `RGBStudioSetup-X.Y.Z.exe` from [Releases](https://github.com/michaelbystryk/rgb-studio/releases) and run it. You don't need Node, and you don't need administrator rights. It adds a Start menu entry, and you can remove it any time from **Settings → Apps**. It never starts with Windows on its own.
+
+**Portable zip.** Download `rgb-studio-X.Y.Z.zip` from Releases and unzip it anywhere. Node is already inside. Double-click `start.cmd` (or `player\RGBStudio.exe`).
+
+**"Windows protected your PC"?** RGB Studio isn't code-signed, so SmartScreen may warn you the first time. Click **More info**, then **Run anyway**.
+
+## Run it
+
+Open **RGB Studio** from the Start menu. This opens http://127.0.0.1:6750 in your browser. RGB Studio only listens on your own PC.
+
+It runs through `player\RGBStudio.exe`, so there's no console window. It shows up as "RGB Studio" with the logo in Task Manager, and ending it there ends the editor too. Its output goes to `%APPDATA%\RGB Studio\editor.log`.
+
+The editor closes by itself about 15 seconds after you close the tab. Run `player\RGBStudio.exe --keep-alive` to keep it running.
+
+Your settings and saved looks live in `%APPDATA%\RGB Studio`. The first time you run a new version, they're copied there once from an older version's folder.
+
+To update, use **Check for updates** in the tray player's menu, or download the new installer and run it over the old one. Your looks stay.
+
+## From a clone / development
+
+You only need this to work on the code. The editor runs on [Node.js](https://nodejs.org) 20 or newer:
 
 1. Go to [nodejs.org](https://nodejs.org) and download the Windows installer (`.msi`) for the **LTS** version.
 2. Run it and keep the default options. You can leave **Automatically install the necessary tools** unticked; RGB Studio doesn't need them.
@@ -39,30 +61,27 @@ The editor runs on Node.js:
 winget install --id OpenJS.NodeJS.LTS --exact --accept-source-agreements --accept-package-agreements
 ```
 
-Then open a new PowerShell window, so it picks up Node, and check:
+Then open a new PowerShell window, so it picks up Node. If `start.cmd` can't find Node right after installing, sign out of Windows and back in, then try again.
 
-```powershell
-node -v
-```
-
-If `start.cmd` can't find Node right after installing, sign out of Windows and back in, then try again.
-
-## Run it
-
-Download the latest zip from [Releases](https://github.com/michaelbystryk/rgb-studio/releases), unzip it anywhere, and double-click `start.cmd`. The zip includes the tray player, built and ready.
-
-From a clone of this repo, double-click `start.cmd`, or:
+Then, in the clone:
 
 ```
 npm install
 npm start
 ```
 
-This opens http://127.0.0.1:6750 in your browser. RGB Studio only listens on your own PC.
+Or double-click `start.cmd`. Run `node server.js --keep-alive` to keep the editor running after the tab closes. Build the exes with `player\build.cmd`.
 
-`start.cmd` runs the editor through `player\RGBStudio.exe`, so there's no console window. It shows up as "RGB Studio" with the logo in Task Manager, and ending it there ends the editor too. Its output goes to `%APPDATA%\RGB Studio\editor.log`. Without that exe, `start.cmd` falls back to a minimised `node` window.
+## Making a release
 
-The editor closes by itself about 15 seconds after you close the tab. Run `node server.js --keep-alive` to keep it running (or `player\RGBStudio.exe --keep-alive`).
+For the maintainer:
+
+1. Bump `version` in `package.json` and commit.
+2. Run `node tools/build-release.js`. It bundles Node, builds the exes, and writes `dist\rgb-studio-X.Y.Z.zip` and `dist\RGBStudioSetup-X.Y.Z.exe`. The installer needs [Inno Setup 6](https://jrsoftware.org/isinfo.php); without it you get just the zip. Pass `--no-installer` to skip it on purpose.
+3. Or let GitHub do it: push a tag like `v1.2.3` (it must match `package.json`). The release workflow builds both files and attaches them to a **draft** release.
+4. Check the draft on GitHub and publish it.
+
+To change the bundled Node, edit `NODE_VERSION` and its SHA256 at the top of `tools/build-release.js`.
 
 ## Fine-tune a look
 
@@ -79,7 +98,7 @@ The editor draws your look live, so it stops when the editor closes. **Save to P
 
 ![Picking still colors](docs/still-colors.png)
 
-In a clone, build the player and the editor launcher (`RGBStudio.exe`) with `player\build.cmd`. It uses the C# compiler that comes with Windows, so there's nothing to install. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
+The player and the editor launcher (`RGBStudio.exe`) are built with `player\build.cmd`, which uses the C# compiler that comes with Windows. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
 
 ## The 3D view
 
@@ -126,6 +145,9 @@ src/rig.js             default positions for each kind of device, and rig valida
 src/persist.js         stores still colors on devices and in the OpenRGB profile
 src/player-export.js   Save to PC: records each look as a seamless loop for the player
 player/                the tray player and the editor launcher (C#, built with player\build.cmd)
+installer/             the Inno Setup script for the installer
+tools/build-release.js builds the portable zip and the installer (see Making a release)
+.github/workflows/     builds a draft release when a version tag is pushed
 tools/make-icon.js     draws public/favicon.ico, the logo used by the exes and the browser tab
 src/startup.js         sets the OpenRGB service's startup profile (over the SDK, or tools/set-startup-profile.js on older OpenRGB)
 shared/rig-geometry.js where each LED sits, shared by the server and the 3D view
@@ -133,7 +155,7 @@ public/                the page, including the three.js rig view
 tools/probe.js         prints every device, zone and mode OpenRGB reports (npm run probe)
 ```
 
-Settings and your layout are saved to `settings.json` next to `server.js`.
+Settings and your layout are saved to `%APPDATA%\RGB Studio`.
 
 Some effects are inspired by ideas from [OpenRGBEffectsPlugin](https://gitlab.com/OpenRGBDevelopers/OpenRGBEffectsPlugin); no code is taken from it.
 

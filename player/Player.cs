@@ -7,13 +7,17 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32;
+
+[assembly: AssemblyTitle("RGB Studio Player")]
 
 namespace RgbStudioPlayer
 {
@@ -615,7 +619,11 @@ namespace RgbStudioPlayer
 
         readonly NotifyIcon tray = new NotifyIcon();
         readonly Engine engine = new Engine();
-        MenuItem animated, still, startup;
+        readonly Control dispatcher = new Control();
+        readonly ManualResetEvent stopQuitListener = new ManualResetEvent(false);
+        Thread quitListener;
+        bool quitting;
+        MenuItem animated, still, startup, updates;
 
         // Lets native menus follow the Windows dark/light setting, as other tray menus do. These
         // uxtheme exports have no names, only ordinals; they exist on Windows 10 1903 and later.
@@ -629,8 +637,10 @@ namespace RgbStudioPlayer
         readonly System.Windows.Forms.Timer ui = new System.Windows.Forms.Timer();
         string shownStatus = "";
 
-        public TrayApp()
+        public TrayApp(EventWaitHandle quitSignal)
         {
+            // A hidden control gives background work a UI-thread dispatcher before the loop starts.
+            dispatcher.CreateControl();
             int mode = 0;
             try
             {
@@ -648,9 +658,10 @@ namespace RgbStudioPlayer
             animated = new MenuItem("Animated look", delegate { SetMode(0); });
             still = new MenuItem("Still colors", delegate { SetMode(1); });
             animated.RadioCheck = still.RadioCheck = true;
+            updates = new MenuItem("Check for updates", delegate { CheckForUpdates(); });
             startup = new MenuItem("Start with Windows", delegate { ToggleStartup(); });
             ContextMenu menu = new ContextMenu(new MenuItem[] {
-                open, new MenuItem("-"), animated, still, new MenuItem("-"), startup, new MenuItem("Close", delegate { Quit(); }),
+                open, new MenuItem("-"), animated, still, new MenuItem("-"), updates, startup, new MenuItem("Close", delegate { Quit(); }),
             });
             menu.Popup += delegate { startup.Checked = StartupOn(); };
             RefreshChecks();
@@ -665,6 +676,94 @@ namespace RgbStudioPlayer
             ui.Tick += delegate { UpdateTip(); };
             ui.Start();
             engine.Start();
+
+            quitListener = new Thread(delegate()
+            {
+                if (WaitHandle.WaitAny(new WaitHandle[] { quitSignal, stopQuitListener }) == 0)
+                    OnUiThread(Quit);
+            });
+            quitListener.IsBackground = true;
+            quitListener.Name = "Quit listener";
+            quitListener.Start();
+        }
+
+        void OnUiThread(MethodInvoker action)
+        {
+            try
+            {
+                dispatcher.BeginInvoke((MethodInvoker)delegate { if (!quitting) action(); });
+            }
+            catch (InvalidOperationException) { } // The tray is already closing.
+        }
+
+        void CheckForUpdates()
+        {
+            updates.Enabled = false;
+            Thread worker = new Thread(delegate()
+            {
+                try
+                {
+                    // Only contact GitHub when asked; leave normal startup entirely offline.
+                    ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+                    Version current = Assembly.GetExecutingAssembly().GetName().Version;
+                    HttpWebRequest request = (HttpWebRequest)WebRequest.Create("https://api.github.com/repos/michaelbystryk/rgb-studio/releases/latest");
+                    request.UserAgent = "RGBStudio/" + current.ToString(3);
+                    request.Accept = "application/vnd.github+json";
+                    request.Timeout = 10000;
+                    request.ReadWriteTimeout = 10000;
+                    Dictionary<string, object> release;
+                    using (WebResponse response = request.GetResponse())
+                    using (StreamReader reader = new StreamReader(response.GetResponseStream()))
+                        release = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
+
+                    object tagValue, urlValue;
+                    if (release == null || !release.TryGetValue("tag_name", out tagValue) ||
+                        !release.TryGetValue("html_url", out urlValue))
+                        throw new InvalidDataException("The release is missing its version or download page.");
+                    string tag = tagValue as string;
+                    if (tag == null) throw new InvalidDataException("The release version is missing.");
+                    tag = tag.Trim();
+                    if (tag.StartsWith("v", StringComparison.OrdinalIgnoreCase)) tag = tag.Substring(1);
+                    Version latest;
+                    if (!Version.TryParse(tag, out latest)) throw new InvalidDataException("Unrecognized release version: " + tag);
+                    // Version treats an omitted fourth component as -1; releases use three components.
+                    latest = new Version(latest.Major, latest.Minor, Math.Max(0, latest.Build), Math.Max(0, latest.Revision));
+                    Uri page;
+                    if (!Uri.TryCreate(urlValue as string, UriKind.Absolute, out page) || page.Scheme != "https" ||
+                        !String.Equals(page.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("The release download page is invalid.");
+
+                    OnUiThread(delegate
+                    {
+                        updates.Enabled = true;
+                        if (latest.CompareTo(current) > 0)
+                        {
+                            if (MessageBox.Show("RGB Studio " + tag + " is available. Open the download page?", "RGB Studio",
+                                MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                            {
+                                try { Process.Start(new ProcessStartInfo(page.AbsoluteUri) { UseShellExecute = true }); }
+                                catch (Exception e) { UpdateError(e); }
+                            }
+                        }
+                        else MessageBox.Show("You have the latest version (" + current.ToString(3) + ").", "RGB Studio",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    });
+                }
+                catch (Exception e)
+                {
+                    OnUiThread(delegate { updates.Enabled = true; UpdateError(e); });
+                }
+            });
+            worker.IsBackground = true;
+            worker.Name = "Update check";
+            worker.Start();
+        }
+
+        void UpdateError(Exception error)
+        {
+            Log.Write("update check failed: " + error.Message);
+            MessageBox.Show("Couldn't check for updates or open the download page. Please check your internet connection and try again.",
+                "RGB Studio", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         // Drawn at the tray's own icon size (24 px at 150% scaling), so it isn't resampled.
@@ -787,16 +886,45 @@ namespace RgbStudioPlayer
 
         void Quit()
         {
+            if (quitting) return;
+            quitting = true;
+            stopQuitListener.Set();
+            if (quitListener != null) quitListener.Join();
             ui.Stop();
             engine.Stop();
             tray.Visible = false;
             tray.Dispose();
+            dispatcher.Dispose();
+            stopQuitListener.Dispose();
             ExitThread();
         }
     }
 
     static class Program
     {
+        const string QuitEventName = "RGBStudioPlayerQuit";
+
+        static int AskToQuit()
+        {
+            try
+            {
+                using (EventWaitHandle signal = EventWaitHandle.OpenExisting(QuitEventName)) signal.Set();
+                // Let the same Quit() path finish before the installer replaces the executable.
+                using (Mutex running = Mutex.OpenExisting("RGBStudioPlayer"))
+                {
+                    bool owned = false;
+                    try
+                    {
+                        try { owned = running.WaitOne(4500); }
+                        catch (AbandonedMutexException) { owned = true; }
+                    }
+                    finally { if (owned) running.ReleaseMutex(); }
+                }
+            }
+            catch (Exception) { } // No player running, or it has already finished quitting.
+            return 0;
+        }
+
         // Connects, enumerates and logs the matching without sending any mode or color packets.
         static int Check()
         {
@@ -822,16 +950,20 @@ namespace RgbStudioPlayer
         static int Main(string[] args)
         {
             foreach (string a in args)
+                if (a == "--quit") return AskToQuit();
+
+            foreach (string a in args)
                 if (a == "--check") { Log.Reset(); return Check(); }
 
             bool created;
+            using (EventWaitHandle quitSignal = new EventWaitHandle(false, EventResetMode.AutoReset, QuitEventName))
             using (Mutex m = new Mutex(true, "RGBStudioPlayer", out created))
             {
                 if (!created) return 0; // second launch must not clobber the log
                 Log.Reset();
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new TrayApp());
+                Application.Run(new TrayApp(quitSignal));
                 GC.KeepAlive(m);
             }
             return 0;

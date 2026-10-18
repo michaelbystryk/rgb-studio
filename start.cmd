@@ -10,4 +10,8 @@ if not exist node_modules\three (
   echo Installing dependencies...
   call npm install --omit=dev || (pause & exit /b 1)
 )
-start "RGB Studio" /min node server.js --open
+if exist node\node.exe (
+  start "RGB Studio" /min "node\node.exe" server.js --open
+) else (
+  start "RGB Studio" /min node server.js --open
+)

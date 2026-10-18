@@ -1,10 +1,15 @@
-// settings.json next to server.js: the current look, the rig layout and what was last saved.
+// Per-user settings: the current look, the rig layout and what was last saved.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { SCENES } from './effects.js';
 import { DEFAULT_RIG } from './rig.js';
 
-const FILE = path.join(import.meta.dirname, '..', 'settings.json');
+const DATA_DIR = process.env.RGB_STUDIO_DATA || (process.platform === 'win32'
+  ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'RGB Studio')
+  : path.join(os.homedir(), '.config', 'rgb-studio'));
+const FILE = path.resolve(DATA_DIR, 'settings.json');
+const LEGACY_FILE = path.join(import.meta.dirname, '..', 'settings.json');
 const WRITE_DELAY = 300;
 
 export const DEFAULTS = {
@@ -28,6 +33,15 @@ export const DEFAULTS = {
 };
 
 export function loadSettings() {
+  fs.mkdirSync(path.dirname(FILE), { recursive: true });
+  if (!fs.existsSync(FILE)) {
+    try {
+      // Copy once, without overwriting another instance's settings or changing the legacy file.
+      fs.copyFileSync(LEGACY_FILE, FILE, fs.constants.COPYFILE_EXCL);
+    } catch (e) {
+      if (e.code !== 'ENOENT' && e.code !== 'EEXIST') console.warn(`Could not migrate settings.json: ${e.message}`);
+    }
+  }
   let stored = {};
   try {
     stored = JSON.parse(fs.readFileSync(FILE, 'utf8'));
@@ -35,7 +49,7 @@ export function loadSettings() {
     if (e.code !== 'ENOENT') console.warn(`Ignoring unreadable settings.json: ${e.message}`);
   }
   const rig = { ...DEFAULT_RIG, ...stored.rig };
-  return {
+  const settings = {
     ...DEFAULTS, ...stored,
     looks: Array.isArray(stored.looks) ? stored.looks.filter(l =>
       l && typeof l.id === 'string' && typeof l.name === 'string' && typeof l.at === 'string' &&
@@ -45,6 +59,8 @@ export function loadSettings() {
     still: { ...DEFAULTS.still, ...stored.still, colors: stillColors(stored.still?.colors) },
     rig: { ...rig, case: { ...DEFAULT_RIG.case, ...rig.case }, desk: { ...DEFAULT_RIG.desk, ...rig.desk }, lights: { ...rig.lights } },
   };
+  if (!fs.existsSync(FILE)) flushSettings(settings);
+  return settings;
 }
 
 // Older settings kept a single color per area.
@@ -62,6 +78,7 @@ export function saveSettings(settings) {
 
 export function flushSettings(settings) {
   clearTimeout(timer);
+  fs.mkdirSync(path.dirname(FILE), { recursive: true });
   const tmp = FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(settings, null, 2));
   fs.renameSync(tmp, FILE);

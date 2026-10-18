@@ -306,6 +306,11 @@ const layoutChanged = () => { recomputeLayout(); save(); pushState(); return { o
 const routes = {
   'GET /api/state': () => publicState(),
 
+  'POST /api/quit': (_body, res) => {
+    res.once('finish', () => shutdown('asked to quit'));
+    return { ok: true };
+  },
+
   // Pick a scene, or tweak the current look. `area: 'desk'` edits the desk's own look (and gives
   // the desk one, starting from the case's); `own: false` makes the desk share the case's again.
   'POST /api/scene': body => {
@@ -564,7 +569,7 @@ const server = http.createServer(async (req, res) => {
   const route = routes[`${req.method} ${url.pathname}`];
   if (route) {
     try {
-      const out = await route(req.method === 'POST' ? await readBody(req) : {});
+      const out = await route(req.method === 'POST' ? await readBody(req) : {}, res);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(out));
     } catch (e) {

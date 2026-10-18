@@ -4,16 +4,14 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("RGB Studio")]
-[assembly: AssemblyProduct("RGB Studio")]
-[assembly: AssemblyCompany("Michael Bystryk")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
 
 namespace RgbStudioLauncher
 {
@@ -114,8 +112,10 @@ namespace RgbStudioLauncher
             return exeDir;
         }
 
-        static string FindNode()
+        static string FindNode(string root)
         {
+            string bundled = Path.Combine(root, "node\\node.exe");
+            if (File.Exists(bundled)) return bundled;
             string path = Environment.GetEnvironmentVariable("PATH") ?? "";
             foreach (string part in path.Split(';'))
             {
@@ -130,6 +130,31 @@ namespace RgbStudioLauncher
             }
             string fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs\\node.exe");
             return File.Exists(fallback) ? fallback : null;
+        }
+
+        static int AskToQuit()
+        {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            try
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:6750/api/quit");
+                request.Method = "POST";
+                request.ContentType = "application/json";
+                request.Proxy = null;
+                request.KeepAlive = false;
+                request.Timeout = 800;
+                request.ReadWriteTimeout = 800;
+                byte[] body = Encoding.UTF8.GetBytes("{}");
+                request.ContentLength = body.Length;
+                using (Stream stream = request.GetRequestStream()) stream.Write(body, 0, body.Length);
+                using (WebResponse response = request.GetResponse()) { }
+            }
+            catch (Exception) { } // Nothing running, or an older editor without this route.
+
+            // Give the editor time to restore its saved profile. Leave any surviving process alone.
+            int remaining = 4000 - (int)elapsed.ElapsedMilliseconds;
+            if (remaining > 0) Thread.Sleep(remaining);
+            return 0;
         }
 
         static string Quote(string arg)
@@ -161,11 +186,14 @@ namespace RgbStudioLauncher
         [STAThread]
         static int Main(string[] args)
         {
+            foreach (string arg in args)
+                if (arg == "--quit") return AskToQuit();
+
             Log.Reset();
             string root = FindRoot();
             Log.Write("launcher started in " + root);
 
-            string node = FindNode();
+            string node = FindNode(root);
             if (node == null)
             {
                 Log.Write("node.exe not found");

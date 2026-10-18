@@ -37,6 +37,12 @@ This opens http://127.0.0.1:6750 in your browser. RGB Studio only listens on you
 
 The editor closes by itself about 15 seconds after you close the tab. Run `node server.js --keep-alive` to keep it running.
 
+## Fine-tune a look
+
+Pick a scene, then change anything about it: the motion, the colors in order, speed, brightness, how wide the gradient is, and how much the dark gaps glow. Tune the case and the desk separately, or the whole rig at once.
+
+![Fine-tuning a look](docs/fine-tune.png)
+
 ## Keeping your lights after it closes
 
 The editor draws your look live, so it stops when the editor closes. **Save to PC** records it for the player:
@@ -44,9 +50,15 @@ The editor draws your look live, so it stops when the editor closes. **Save to P
 - **The player** (`player\RGBStudioPlayer.exe`) is a small app with an icon in your taskbar tray. It plays your saved look, in sync across every device, and picks up new saves by itself. While the editor is open it waits, then takes over again once you close it. Its menu has **Open editor**, **Animated look** or **Still colors**, **Start with Windows** (off until you turn it on), and **Close**.
 - **Still colors** are what your lights show when you're not using them: from the player's menu, after you close the player, and while your PC starts. Pick a color or a gradient for the case and for the desk, or freeze a snapshot of your look. RGB Studio stores them on devices that support it and in an OpenRGB profile named "RGB Studio". To show them after a restart or sleep as well, the save dialog offers to make that the OpenRGB service's startup profile. With OpenRGB 1.1 or newer that takes one click; older versions ask for administrator rights once.
 
+![Picking still colors](docs/still-colors.png)
+
 To build the player, run `player\build.cmd`. It uses the C# compiler that comes with Windows, so there's nothing to install. The player needs only OpenRGB. The files it plays are described in [docs/player-format.md](docs/player-format.md).
 
 ## The 3D view
+
+It's a full 3D editor of your setup: turn around it, zoom in, and drag any light to where it really sits.
+
+![Turning around the 3D view](docs/rig-orbit.gif)
 
 | Do this | To |
 | --- | --- |
@@ -55,6 +67,18 @@ To build the player, run `player\build.cmd`. It uses the C# compiler that comes 
 | Drag empty space, or middle-drag | orbit |
 | Right-drag, or Shift + drag | pan |
 | Scroll | zoom toward the pointer |
+
+## Line up each light
+
+Click a light in the 3D view, or pick it from the list, to set where it's mounted and which way its LEDs run.
+
+![Editing a fan](docs/light-editor.png)
+
+- **Identify** blinks that light white on your PC, so you know which fan or strip it is.
+- **Show first LED** (fans) lights the fan's first LED in white with pink trailing after it, on your PC and in the 3D view. If the two don't match, fix it with the buttons below.
+- **Reverse** flips which way the LEDs run. Use it when colors circle a fan the wrong way, or flow down a RAM stick when they should rise.
+- **Upside down** (fans) turns the fan's lights half a turn, for when effects start from the wrong edge. **Turn lights °** does the same in smaller steps.
+- **Nothing connected** hides a header or channel with nothing plugged into it.
 
 ## Describe your own setup
 
